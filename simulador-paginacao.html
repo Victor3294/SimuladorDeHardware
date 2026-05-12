@@ -1,0 +1,956 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Simulador de Paginação – Parte 1</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0e1a;
+    --panel: #0f1628;
+    --panel2: #131c34;
+    --border: #1e2d50;
+    --accent: #00d4ff;
+    --accent2: #ff6b35;
+    --accent3: #7fff6b;
+    --p1: #3b82f6;
+    --p1-dim: #1e3a5f;
+    --p2: #a855f7;
+    --p2-dim: #3b1f5e;
+    --p3: #f59e0b;
+    --p3-dim: #5c3a00;
+    --sys: #1e2d50;
+    --text: #c8d8f0;
+    --text-dim: #5a7099;
+    --mono: 'Share Tech Mono', monospace;
+    --sans: 'Rajdhani', sans-serif;
+    --glow: 0 0 12px rgba(0,212,255,0.4);
+    --glow-p1: 0 0 14px rgba(59,130,246,0.6);
+    --glow-p2: 0 0 14px rgba(168,85,247,0.6);
+    --glow-p3: 0 0 14px rgba(245,158,11,0.6);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* scanline overlay */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.03) 2px,
+      rgba(0,0,0,0.03) 4px
+    );
+    pointer-events: none;
+    z-index: 999;
+  }
+
+  header {
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 24px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    position: sticky; top: 0; z-index: 100;
+  }
+
+  .logo-chip {
+    width: 36px; height: 36px;
+    background: var(--accent);
+    clip-path: polygon(20% 0%,80% 0%,100% 20%,100% 80%,80% 100%,20% 100%,0% 80%,0% 20%);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; font-weight: 700; color: var(--bg);
+    font-family: var(--mono);
+    animation: chipPulse 3s ease-in-out infinite;
+  }
+
+  @keyframes chipPulse {
+    0%,100% { box-shadow: 0 0 8px var(--accent); }
+    50% { box-shadow: 0 0 20px var(--accent), 0 0 40px rgba(0,212,255,0.2); }
+  }
+
+  header h1 {
+    font-size: 18px; font-weight: 700; letter-spacing: 3px;
+    text-transform: uppercase; color: var(--accent);
+    text-shadow: var(--glow);
+  }
+
+  header .sub { font-size: 11px; color: var(--text-dim); letter-spacing: 2px; font-family: var(--mono); }
+
+  .badge {
+    margin-left: auto;
+    background: rgba(0,212,255,0.1);
+    border: 1px solid rgba(0,212,255,0.3);
+    color: var(--accent);
+    padding: 4px 12px;
+    border-radius: 2px;
+    font-size: 11px;
+    font-family: var(--mono);
+    letter-spacing: 2px;
+  }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 280px 1fr 240px;
+    gap: 0;
+    height: calc(100vh - 57px);
+  }
+
+  /* ── LEFT PANEL ── */
+  .panel-left {
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    padding: 16px;
+    display: flex; flex-direction: column; gap: 16px;
+  }
+
+  .panel-title {
+    font-size: 10px; letter-spacing: 3px; text-transform: uppercase;
+    color: var(--text-dim); font-family: var(--mono);
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 8px;
+    margin-bottom: 4px;
+  }
+
+  .process-card {
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .process-card:hover { transform: translateX(3px); }
+
+  .process-card.active-p1 { border-color: var(--p1); box-shadow: var(--glow-p1); }
+  .process-card.active-p2 { border-color: var(--p2); box-shadow: var(--glow-p2); }
+  .process-card.active-p3 { border-color: var(--p3); box-shadow: var(--glow-p3); }
+
+  .process-header {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px;
+    background: var(--panel2);
+  }
+
+  .proc-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .p1 .proc-dot { background: var(--p1); box-shadow: 0 0 6px var(--p1); }
+  .p2 .proc-dot { background: var(--p2); box-shadow: 0 0 6px var(--p2); }
+  .p3 .proc-dot { background: var(--p3); box-shadow: 0 0 6px var(--p3); }
+
+  .proc-name { font-size: 15px; font-weight: 700; letter-spacing: 2px; }
+  .p1 .proc-name { color: var(--p1); }
+  .p2 .proc-name { color: var(--p2); }
+  .p3 .proc-name { color: var(--p3); }
+
+  .proc-status { font-size: 10px; font-family: var(--mono); color: var(--text-dim); margin-left: auto; }
+
+  .tcb-block {
+    padding: 10px 12px;
+    background: rgba(0,0,0,0.2);
+  }
+
+  .tcb-label { font-size: 9px; letter-spacing: 2px; color: var(--text-dim); font-family: var(--mono); margin-bottom: 6px; }
+
+  .tcb-row {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 11px; font-family: var(--mono);
+    padding: 2px 0;
+  }
+
+  .tcb-key { color: var(--text-dim); }
+  .tcb-val { color: var(--accent3); }
+
+  .vars-block { padding: 8px 12px 12px; }
+  .vars-label { font-size: 9px; letter-spacing: 2px; color: var(--text-dim); font-family: var(--mono); margin-bottom: 6px; }
+
+  .var-btn {
+    display: flex; align-items: center; gap: 8px;
+    width: 100%; margin-bottom: 4px;
+    padding: 7px 10px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text);
+    text-align: left;
+  }
+
+  .var-btn:hover {
+    background: rgba(255,255,255,0.07);
+    border-color: rgba(255,255,255,0.2);
+    transform: translateX(2px);
+  }
+
+  .p1 .var-btn:hover { border-color: var(--p1); color: var(--p1); }
+  .p2 .var-btn:hover { border-color: var(--p2); color: var(--p2); }
+  .p3 .var-btn:hover { border-color: var(--p3); color: var(--p3); }
+
+  .var-icon { font-size: 10px; opacity: 0.5; }
+  .var-addr { margin-left: auto; font-size: 10px; color: var(--text-dim); }
+
+  /* ── CENTER PANEL (MMU) ── */
+  .panel-center {
+    overflow-y: auto;
+    padding: 20px;
+    display: flex; flex-direction: column; gap: 20px;
+  }
+
+  .mmu-container {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .mmu-title-bar {
+    background: var(--panel2);
+    padding: 10px 16px;
+    display: flex; align-items: center; gap: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .mmu-title-bar h2 {
+    font-size: 12px; letter-spacing: 3px;
+    text-transform: uppercase; color: var(--accent);
+    font-family: var(--mono);
+  }
+
+  .mmu-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--accent3); box-shadow: 0 0 6px var(--accent3);
+    animation: blink 1.5s ease-in-out infinite;
+  }
+
+  @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.2; } }
+
+  .mmu-body { padding: 20px; }
+
+  .idle-msg {
+    text-align: center; padding: 40px;
+    color: var(--text-dim); font-family: var(--mono); font-size: 12px;
+    line-height: 2;
+  }
+
+  .idle-msg .arrow { font-size: 24px; color: var(--border); display: block; margin-bottom: 8px; }
+
+  /* Translation Steps */
+  .steps { display: flex; flex-direction: column; gap: 12px; }
+
+  .step {
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+    opacity: 0;
+    transform: translateY(10px);
+    animation: stepIn 0.3s forwards;
+  }
+
+  @keyframes stepIn {
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .step:nth-child(1) { animation-delay: 0.05s; }
+  .step:nth-child(2) { animation-delay: 0.2s; }
+  .step:nth-child(3) { animation-delay: 0.35s; }
+  .step:nth-child(4) { animation-delay: 0.5s; }
+  .step:nth-child(5) { animation-delay: 0.65s; }
+
+  .step-header {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 12px;
+    background: var(--panel2);
+  }
+
+  .step-num {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: var(--bg);
+    font-size: 11px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--mono);
+    flex-shrink: 0;
+  }
+
+  .step-title {
+    font-size: 11px; letter-spacing: 2px; text-transform: uppercase;
+    color: var(--text); font-family: var(--mono);
+  }
+
+  .step-body { padding: 12px; }
+
+  .addr-decomp {
+    display: flex; align-items: center; gap: 8px;
+    font-family: var(--mono); font-size: 13px;
+    flex-wrap: wrap;
+  }
+
+  .addr-box {
+    background: rgba(0,0,0,0.3);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 6px 12px;
+  }
+
+  .addr-box .label { font-size: 9px; color: var(--text-dim); display: block; margin-bottom: 2px; }
+  .addr-box .val { font-size: 15px; }
+  .addr-box.page .val { color: var(--accent2); }
+  .addr-box.offset .val { color: var(--accent3); }
+  .addr-box.frame .val { color: var(--accent); }
+  .addr-box.phys .val { color: #ff6bdb; }
+
+  .eq { color: var(--text-dim); }
+  .arrow-right { color: var(--text-dim); font-size: 18px; }
+
+  .page-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--mono); font-size: 12px;
+  }
+
+  .page-table th {
+    background: rgba(0,0,0,0.3);
+    padding: 6px 10px;
+    text-align: left;
+    color: var(--text-dim);
+    font-size: 10px;
+    letter-spacing: 1px;
+    font-weight: 400;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .page-table td {
+    padding: 7px 10px;
+    border-bottom: 1px solid rgba(30,45,80,0.5);
+    color: var(--text);
+  }
+
+  .page-table tr.highlight td {
+    background: rgba(0,212,255,0.08);
+    color: var(--accent);
+  }
+
+  .page-table tr.highlight td:first-child::before {
+    content: '▶ ';
+    color: var(--accent);
+  }
+
+  .formula-box {
+    background: rgba(0,0,0,0.3);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 3px;
+    padding: 12px 16px;
+    font-family: var(--mono); font-size: 13px;
+    line-height: 2;
+  }
+
+  .formula-box .formula-line { color: var(--text-dim); font-size: 11px; }
+  .formula-box .formula-result { font-size: 16px; color: #ff6bdb; }
+
+  .result-banner {
+    background: linear-gradient(90deg, rgba(0,212,255,0.05), rgba(0,212,255,0.15), rgba(0,212,255,0.05));
+    border: 1px solid var(--accent);
+    border-radius: 3px;
+    padding: 14px 16px;
+    text-align: center;
+    font-family: var(--mono);
+    animation: resultPulse 1s ease-out;
+  }
+
+  @keyframes resultPulse {
+    0% { box-shadow: 0 0 0 0 rgba(0,212,255,0.6); }
+    100% { box-shadow: var(--glow); }
+  }
+
+  .result-banner .result-label { font-size: 10px; color: var(--text-dim); letter-spacing: 2px; }
+  .result-banner .result-addr { font-size: 22px; color: var(--accent); text-shadow: var(--glow); }
+
+  /* Register display */
+  .regs-row {
+    display: flex; gap: 12px; flex-wrap: wrap;
+  }
+
+  .reg-widget {
+    flex: 1; min-width: 120px;
+    background: rgba(0,0,0,0.3);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 10px 12px;
+  }
+
+  .reg-name { font-size: 9px; letter-spacing: 2px; color: var(--text-dim); font-family: var(--mono); margin-bottom: 4px; }
+  .reg-val { font-size: 14px; font-family: var(--mono); color: var(--accent3); }
+
+  /* ── RIGHT PANEL (RAM) ── */
+  .panel-right {
+    background: var(--panel);
+    border-left: 1px solid var(--border);
+    overflow-y: auto;
+    padding: 16px;
+  }
+
+  .ram-grid {
+    display: flex; flex-direction: column; gap: 3px;
+    margin-top: 8px;
+  }
+
+  .frame-row {
+    display: flex; align-items: center; gap: 6px;
+    padding: 5px 8px;
+    border-radius: 3px;
+    border: 1px solid transparent;
+    transition: all 0.2s;
+    font-family: var(--mono); font-size: 10px;
+    position: relative;
+  }
+
+  .frame-num {
+    width: 20px; color: var(--text-dim); text-align: right; flex-shrink: 0;
+  }
+
+  .frame-bar {
+    flex: 1;
+    height: 18px;
+    border-radius: 2px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--border);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .frame-bar-fill {
+    height: 100%;
+    transition: width 0.3s;
+  }
+
+  .frame-addr { color: var(--text-dim); font-size: 9px; width: 72px; text-align: right; flex-shrink: 0; }
+
+  .frame-row.sys .frame-bar-fill { background: var(--sys); width: 100%; }
+  .frame-row.p1-frame .frame-bar-fill { background: var(--p1-dim); width: 100%; }
+  .frame-row.p2-frame .frame-bar-fill { background: var(--p2-dim); width: 100%; }
+  .frame-row.p3-frame .frame-bar-fill { background: var(--p3-dim); width: 100%; }
+  .frame-row.free .frame-bar-fill { width: 0; }
+
+  .frame-row.flash-frame {
+    animation: flashFrame 0.6s ease-out 3;
+  }
+
+  @keyframes flashFrame {
+    0%,100% { background: transparent; }
+    50% { background: rgba(0,212,255,0.15); border-color: var(--accent); }
+  }
+
+  .frame-tag {
+    position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+    font-size: 9px; letter-spacing: 1px; opacity: 0.7;
+  }
+
+  .legend {
+    display: flex; flex-direction: column; gap: 5px;
+    margin-top: 12px; padding-top: 12px;
+    border-top: 1px solid var(--border);
+  }
+
+  .legend-item {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 10px; font-family: var(--mono); color: var(--text-dim);
+  }
+
+  .legend-dot {
+    width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0;
+  }
+
+  .info-toast {
+    position: fixed;
+    bottom: 24px; left: 50%; transform: translateX(-50%);
+    background: var(--panel2);
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    padding: 10px 20px;
+    font-family: var(--mono); font-size: 12px;
+    color: var(--accent);
+    box-shadow: var(--glow);
+    z-index: 200;
+    opacity: 0;
+    transition: opacity 0.3s;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+
+  .info-toast.show { opacity: 1; }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo-chip">MMU</div>
+  <div>
+    <h1>Simulador de Paginação</h1>
+    <div class="sub">PARTE 1 — TRADUÇÃO DE ENDEREÇOS VIRTUAIS → FÍSICOS</div>
+  </div>
+  <div class="badge">IFSC · SO · ADS</div>
+</header>
+
+<div class="layout">
+
+  <!-- LEFT: Processes -->
+  <div class="panel-left">
+    <div class="panel-title">◈ Processos / TCB</div>
+    <div id="proc-list"></div>
+  </div>
+
+  <!-- CENTER: MMU -->
+  <div class="panel-center">
+    <!-- Registers row -->
+    <div class="regs-row" id="regs-row">
+      <div class="reg-widget">
+        <div class="reg-name">PROCESSO ATIVO</div>
+        <div class="reg-val" id="reg-proc">—</div>
+      </div>
+      <div class="reg-widget">
+        <div class="reg-name">PTBR (offset em frame 0)</div>
+        <div class="reg-val" id="reg-ptbr">—</div>
+      </div>
+      <div class="reg-widget">
+        <div class="reg-name">PAGE SIZE</div>
+        <div class="reg-val">1024 B</div>
+      </div>
+      <div class="reg-widget">
+        <div class="reg-name">FRAMES TOTAIS</div>
+        <div class="reg-val">16</div>
+      </div>
+    </div>
+
+    <div class="mmu-container">
+      <div class="mmu-title-bar">
+        <div class="mmu-dot"></div>
+        <h2>MMU — Memory Management Unit</h2>
+      </div>
+      <div class="mmu-body" id="mmu-body">
+        <div class="idle-msg">
+          <span class="arrow">⬅</span>
+          Selecione um processo no painel esquerdo<br>
+          e depois clique em uma variável para<br>
+          iniciar a tradução de endereço.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: RAM -->
+  <div class="panel-right">
+    <div class="panel-title">◈ Memória RAM (16 KiB)</div>
+    <div class="ram-grid" id="ram-grid"></div>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:var(--sys)"></div>Sistema / Tabelas</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--p1-dim)"></div>Processo P1</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--p2-dim)"></div>Processo P2</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--p3-dim)"></div>Processo P3</div>
+      <div class="legend-item"><div class="legend-dot" style="background:rgba(255,255,255,0.04); border:1px solid #1e2d50"></div>Livre</div>
+    </div>
+  </div>
+</div>
+
+<div class="info-toast" id="toast"></div>
+
+<script>
+// ─── DATA ───────────────────────────────────────────────────────────────────
+
+const PAGE_SIZE = 1024;
+
+const PROCESSES = {
+  P1: {
+    ptbr: '0x0000',
+    ptbrOffset: 0x0000,
+    color: 'p1',
+    cssVar: 'var(--p1)',
+    pages: [5, 8, 9, 11],
+    vars: [
+      { name: 'alpha', page: 0, offset: 0x120 },
+      { name: 'beta',  page: 1, offset: 0x050 },
+      { name: 'gamma', page: 2, offset: 0x2A0 },
+      { name: 'delta', page: 3, offset: 0x3F0 },
+    ]
+  },
+  P2: {
+    ptbr: '0x0100',
+    ptbrOffset: 0x0100,
+    color: 'p2',
+    cssVar: 'var(--p2)',
+    pages: [1, 2, 12, 13],
+    vars: [
+      { name: 'omega',  page: 0, offset: 0x080 },
+      { name: 'sigma',  page: 1, offset: 0x1C0 },
+      { name: 'lambda', page: 2, offset: 0x300 },
+      { name: 'psi',    page: 3, offset: 0x010 },
+    ]
+  },
+  P3: {
+    ptbr: '0x0200',
+    ptbrOffset: 0x0200,
+    color: 'p3',
+    cssVar: 'var(--p3)',
+    pages: [3, 4, 14, 15],
+    vars: [
+      { name: 'xenon', page: 0, offset: 0x200 },
+      { name: 'argon', page: 1, offset: 0x0A0 },
+      { name: 'neon',  page: 2, offset: 0x380 },
+      { name: 'kryp',  page: 3, offset: 0x1B0 },
+    ]
+  }
+};
+
+// Which frame belongs to whom (for RAM display)
+const FRAME_OWNER = {
+  0:  'sys',   // tabelas
+  1:  'p2',    // P2 pág 0 → frame 1
+  2:  'p2',    // P2 pág 1 → frame 2
+  3:  'p3',    // P3 pág 0 → frame 3
+  4:  'p3',    // P3 pág 1 → frame 4
+  5:  'p1',    // P1 pág 0 → frame 5
+  6:  null,
+  7:  null,
+  8:  'p1',    // P1 pág 1 → frame 8
+  9:  'p1',    // P1 pág 2 → frame 9
+  10: null,
+  11: 'p1',    // P1 pág 3 → frame 11
+  12: 'p2',    // P2 pág 2 → frame 12
+  13: 'p2',    // P2 pág 3 → frame 13
+  14: 'p3',    // P3 pág 2 → frame 14
+  15: 'p3',    // P3 pág 3 → frame 15
+};
+
+const FRAME_LABELS = {
+  0: 'PAGE TABLES', 1: 'P2[0]', 2: 'P2[1]', 3: 'P3[0]', 4: 'P3[1]',
+  5: 'P1[0]', 8: 'P1[1]', 9: 'P1[2]', 11: 'P1[3]',
+  12: 'P2[2]', 13: 'P2[3]', 14: 'P3[2]', 15: 'P3[3]'
+};
+
+let activeProcess = null;
+
+// ─── HELPERS ────────────────────────────────────────────────────────────────
+
+function hex(n, pad = 4) { return '0x' + n.toString(16).toUpperCase().padStart(pad, '0'); }
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2400);
+}
+
+function flashFrame(frameNum) {
+  const rows = document.querySelectorAll('.frame-row');
+  const row = rows[frameNum];
+  if (!row) return;
+  row.classList.remove('flash-frame');
+  void row.offsetWidth;
+  row.classList.add('flash-frame');
+  setTimeout(() => row.classList.remove('flash-frame'), 2000);
+}
+
+// ─── BUILD LEFT PANEL ───────────────────────────────────────────────────────
+
+function buildProcesses() {
+  const container = document.getElementById('proc-list');
+  container.innerHTML = '';
+
+  Object.entries(PROCESSES).forEach(([pid, proc]) => {
+    const card = document.createElement('div');
+    card.className = `process-card ${proc.color}`;
+    card.id = `card-${pid}`;
+
+    card.innerHTML = `
+      <div class="process-header">
+        <div class="proc-dot"></div>
+        <span class="proc-name">${pid}</span>
+        <span class="proc-status" id="status-${pid}">INATIVO</span>
+      </div>
+      <div class="tcb-block">
+        <div class="tcb-label">◆ TCB — Task Control Block</div>
+        <div class="tcb-row"><span class="tcb-key">PID</span><span class="tcb-val">${pid}</span></div>
+        <div class="tcb-row"><span class="tcb-key">PTBR</span><span class="tcb-val">${proc.ptbr}</span></div>
+        <div class="tcb-row"><span class="tcb-key">PÁGINAS</span><span class="tcb-val">4</span></div>
+        <div class="tcb-row"><span class="tcb-key">FRAMES</span><span class="tcb-val">${proc.pages.join(', ')}</span></div>
+      </div>
+      <div class="vars-block">
+        <div class="vars-label">◆ Variáveis</div>
+        ${proc.vars.map(v => `
+          <button class="var-btn" onclick="translateAddress('${pid}', ${proc.vars.indexOf(v)})">
+            <span class="var-icon">▸</span>
+            <span>${v.name}</span>
+            <span class="var-addr">[P${v.page}+${hex(v.offset)}]</span>
+          </button>
+        `).join('')}
+      </div>
+    `;
+
+    card.querySelector('.process-header').addEventListener('click', () => selectProcess(pid));
+    container.appendChild(card);
+  });
+}
+
+// ─── SELECT PROCESS ─────────────────────────────────────────────────────────
+
+function selectProcess(pid) {
+  activeProcess = pid;
+  const proc = PROCESSES[pid];
+
+  // update card styles
+  document.querySelectorAll('.process-card').forEach(c => {
+    c.classList.remove('active-p1','active-p2','active-p3');
+  });
+  document.getElementById(`card-${pid}`).classList.add(`active-${proc.color}`);
+
+  // update status badges
+  document.querySelectorAll('[id^="status-"]').forEach(s => s.textContent = 'INATIVO');
+  document.getElementById(`status-${pid}`).textContent = 'ATIVO ●';
+
+  // update MMU registers
+  document.getElementById('reg-proc').textContent = pid;
+  document.getElementById('reg-ptbr').textContent = proc.ptbr;
+
+  // show idle state in MMU
+  document.getElementById('mmu-body').innerHTML = `
+    <div class="idle-msg">
+      <span class="arrow">⬇</span>
+      Processo <strong style="color:${proc.cssVar}">${pid}</strong> selecionado.<br>
+      PTBR carregado: <span style="color:var(--accent3)">${proc.ptbr}</span><br>
+      Clique em uma variável para traduzir o endereço.
+    </div>
+  `;
+
+  showToast(`Processo ${pid} ativado — PTBR = ${proc.ptbr}`);
+}
+
+// ─── TRANSLATE ADDRESS ──────────────────────────────────────────────────────
+
+function translateAddress(pid, varIdx) {
+  if (activeProcess !== pid) {
+    selectProcess(pid);
+    setTimeout(() => translateAddress(pid, varIdx), 300);
+    return;
+  }
+
+  const proc = PROCESSES[pid];
+  const variable = proc.vars[varIdx];
+
+  const logicalPage   = variable.page;
+  const offset        = variable.offset;
+  const logicalAddr   = logicalPage * PAGE_SIZE + offset;
+  const physFrame     = proc.pages[logicalPage];
+  const physAddr      = physFrame * PAGE_SIZE + offset;
+
+  // Frame 0 address of page table entry
+  const ptEntryAddr   = proc.ptbrOffset + logicalPage * 4; // simplified
+
+  renderMMU(pid, proc, variable, logicalPage, offset, logicalAddr, physFrame, physAddr, ptEntryAddr);
+
+  // Flash frame 0 (page table lookup) then target frame
+  flashFrame(0);
+  setTimeout(() => flashFrame(physFrame), 900);
+}
+
+function renderMMU(pid, proc, variable, logicalPage, offset, logicalAddr, physFrame, physAddr, ptEntryAddr) {
+  const mmu = document.getElementById('mmu-body');
+
+  mmu.innerHTML = `<div class="steps">
+
+    <!-- STEP 1: Endereço lógico -->
+    <div class="step">
+      <div class="step-header">
+        <div class="step-num">1</div>
+        <div class="step-title">Decomposição do Endereço Lógico</div>
+      </div>
+      <div class="step-body">
+        <div class="addr-decomp">
+          <div class="addr-box">
+            <span class="label">ENDEREÇO LÓGICO</span>
+            <span class="val">${hex(logicalAddr)}</span>
+          </div>
+          <span class="eq">=</span>
+          <div class="addr-box page">
+            <span class="label">PÁGINA (bits [13:10])</span>
+            <span class="val">${logicalPage}</span>
+          </div>
+          <span class="eq">|</span>
+          <div class="addr-box offset">
+            <span class="label">DESLOCAMENTO (bits [9:0])</span>
+            <span class="val">${hex(offset)}</span>
+          </div>
+        </div>
+        <div style="margin-top:10px; font-size:11px; font-family:var(--mono); color:var(--text-dim)">
+          Variável: <span style="color:var(--accent3)">${variable.name}</span> &nbsp;|&nbsp; 
+          Página virtual: <span style="color:var(--accent2)">${logicalPage}</span> &nbsp;|&nbsp;
+          Offset: <span style="color:var(--accent3)">${hex(offset)}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- STEP 2: PTBR e localização da tabela -->
+    <div class="step">
+      <div class="step-header">
+        <div class="step-num">2</div>
+        <div class="step-title">Acesso ao Frame 0 via PTBR (MMU → RAM)</div>
+      </div>
+      <div class="step-body">
+        <div class="addr-decomp">
+          <div class="addr-box">
+            <span class="label">PTBR</span>
+            <span class="val">${proc.ptbr}</span>
+          </div>
+          <span class="arrow-right">+</span>
+          <div class="addr-box page">
+            <span class="label">PÁGINA × 4</span>
+            <span class="val">${logicalPage} × 4</span>
+          </div>
+          <span class="arrow-right">→</span>
+          <div class="addr-box offset">
+            <span class="label">ENTRADA NA TABELA (frame 0)</span>
+            <span class="val">${hex(ptEntryAddr)}</span>
+          </div>
+        </div>
+        <div style="margin-top:10px; font-size:11px; font-family:var(--mono); color:var(--text-dim)">
+          ⚡ Frame 0 acessado — contém todas as tabelas de páginas (pisca na RAM →)
+        </div>
+      </div>
+    </div>
+
+    <!-- STEP 3: Tabela de páginas -->
+    <div class="step">
+      <div class="step-header">
+        <div class="step-num">3</div>
+        <div class="step-title">Consulta à Tabela de Páginas de ${pid}</div>
+      </div>
+      <div class="step-body">
+        <table class="page-table">
+          <thead>
+            <tr>
+              <th>PÁG. VIRTUAL</th>
+              <th>FRAME FÍSICO</th>
+              <th>END. INICIAL</th>
+              <th>END. FINAL</th>
+              <th>VÁLIDO</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${proc.pages.map((f, i) => `
+              <tr class="${i === logicalPage ? 'highlight' : ''}">
+                <td>${i}</td>
+                <td>${f}</td>
+                <td>${hex(f * PAGE_SIZE)}</td>
+                <td>${hex(f * PAGE_SIZE + PAGE_SIZE - 1)}</td>
+                <td style="color:var(--accent3)">✓</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+        <div style="margin-top:8px; font-size:11px; font-family:var(--mono); color:var(--text-dim)">
+          Página <span style="color:var(--accent2)">${logicalPage}</span> → Frame físico 
+          <span style="color:var(--accent)"><strong>${physFrame}</strong></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- STEP 4: Cálculo do endereço físico -->
+    <div class="step">
+      <div class="step-header">
+        <div class="step-num">4</div>
+        <div class="step-title">Cálculo do Endereço Físico</div>
+      </div>
+      <div class="step-body">
+        <div class="formula-box">
+          <div class="formula-line">Endereço Físico = Frame × PAGE_SIZE + Deslocamento</div>
+          <div class="formula-line">Endereço Físico = ${physFrame} × 1024 + ${offset}</div>
+          <div class="formula-line">Endereço Físico = ${physFrame * PAGE_SIZE} + ${offset}</div>
+          <div class="formula-result">Endereço Físico = ${hex(physAddr)}</div>
+        </div>
+        <div style="margin-top:8px; font-size:11px; font-family:var(--mono); color:var(--text-dim)">
+          ⚡ Frame <span style="color:var(--accent)">${physFrame}</span> acessado na RAM (pisca na RAM →)
+        </div>
+      </div>
+    </div>
+
+    <!-- STEP 5: Resultado final -->
+    <div class="step">
+      <div class="step-header">
+        <div class="step-num">5</div>
+        <div class="step-title">Resultado — Tradução Concluída</div>
+      </div>
+      <div class="step-body">
+        <div class="result-banner">
+          <div class="result-label">ENDEREÇO FÍSICO FINAL</div>
+          <div class="result-addr">${hex(physAddr)}</div>
+          <div style="margin-top:8px; font-size:11px; font-family:var(--mono); color:var(--text-dim)">
+            ${pid} · ${variable.name} &nbsp;|&nbsp; Pág. ${logicalPage} → Frame ${physFrame} &nbsp;|&nbsp; Offset: ${hex(offset)}
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>`;
+}
+
+// ─── BUILD RAM ───────────────────────────────────────────────────────────────
+
+function buildRAM() {
+  const grid = document.getElementById('ram-grid');
+  grid.innerHTML = '';
+  for (let i = 0; i < 16; i++) {
+    const owner = FRAME_OWNER[i];
+    const startAddr = i * PAGE_SIZE;
+    const endAddr   = startAddr + PAGE_SIZE - 1;
+    const label     = FRAME_LABELS[i] || '';
+
+    let cls = 'frame-row ';
+    if (i === 0) cls += 'sys';
+    else if (owner === 'p1') cls += 'p1-frame';
+    else if (owner === 'p2') cls += 'p2-frame';
+    else if (owner === 'p3') cls += 'p3-frame';
+    else cls += 'free';
+
+    grid.innerHTML += `
+      <div class="${cls}">
+        <span class="frame-num">${i}</span>
+        <div class="frame-bar">
+          <div class="frame-bar-fill"></div>
+          ${label ? `<span class="frame-tag">${label}</span>` : ''}
+        </div>
+        <span class="frame-addr">${hex(startAddr)}-${hex(endAddr).slice(2)}</span>
+      </div>
+    `;
+  }
+}
+
+// ─── INIT ────────────────────────────────────────────────────────────────────
+
+buildProcesses();
+buildRAM();
+</script>
+</body>
+</html>
