@@ -204,8 +204,127 @@ Frames que piscam: **0** (tabela de páginas) → **5** (dado de P1).
 
 ---
 
-## 8. Como Executar
+## 8. Como Executar o Projeto
 
-1. Abra o arquivo `simulador-paginacao.html` em qualquer navegador moderno (Chrome, Firefox, Edge, Safari).
-2. Nenhuma instalação ou servidor web é necessário.
-3. Requer conexão à internet apenas para carregar as fontes do Google Fonts.
+O simulador é um arquivo HTML autocontido — não requer instalação de software, servidor web, Node.js ou qualquer outra dependência local.
+
+### 8.1 Pré-requisitos
+
+| Requisito | Detalhe |
+|-----------|---------|
+| Navegador moderno | Google Chrome 90+, Firefox 88+, Microsoft Edge 90+ ou Safari 14+ |
+| Conexão à internet | Apenas para carregar as fontes do Google Fonts (`Share Tech Mono` e `Rajdhani`). Sem internet as fontes fallback do sistema são usadas e o simulador continua funcional. |
+| Servidor web | **Não necessário.** O arquivo pode ser aberto diretamente do sistema de arquivos. |
+
+### 8.2 Passo a passo para rodar
+
+**Opção A — Abrir diretamente pelo sistema de arquivos (mais simples)**
+
+1. Baixe ou localize o arquivo `simulador-paginacao.html` no seu computador.
+2. Dê um duplo clique no arquivo. Ele abrirá automaticamente no navegador padrão do sistema.
+3. Se o navegador não abrir, clique com o botão direito → **Abrir com** → escolha Chrome, Firefox ou Edge.
+
+**Opção B — Abrir pelo navegador manualmente**
+
+1. Abra o navegador.
+2. Na barra de endereços, digite `Ctrl+O` (Windows/Linux) ou `Cmd+O` (macOS).
+3. Navegue até a pasta onde o arquivo está salvo e clique em **Abrir**.
+
+**Opção C — Via VS Code com Live Server (recomendado para desenvolvimento)**
+
+1. Instale a extensão **Live Server** no VS Code.
+2. Abra a pasta do projeto no VS Code.
+3. Clique com o botão direito em `simulador-paginacao.html` → **Open with Live Server**.
+4. O navegador abrirá em `http://127.0.0.1:5500/simulador-paginacao.html`.
+
+**Opção D — Via terminal com Python (alternativa rápida)**
+
+```bash
+# Python 3
+cd pasta/do/projeto
+python3 -m http.server 8080
+```
+
+Depois acesse `http://localhost:8080/simulador-paginacao.html` no navegador.
+
+---
+
+## 9. Como Usar o Simulador
+
+Ao abrir o arquivo, a interface já está pronta — não há tela de carregamento nem configuração inicial. Veja abaixo o uso passo a passo.
+
+### 9.1 Visão inicial
+
+Ao carregar a página você verá:
+
+- **Painel esquerdo:** três cards (P1, P2, P3) com status `INATIVO`.
+- **Painel central:** mensagem solicitando que você selecione um processo.
+- **Painel direito:** os 16 frames da RAM já coloridos conforme o mapeamento inicial — frames coloridos pertencem a um processo, frames escuros estão livres.
+
+### 9.2 Passo 1 — Selecionar um processo
+
+Clique no **cabeçalho de um card** de processo (na área com o nome P1, P2 ou P3).
+
+O que acontece:
+- O card selecionado ganha uma borda colorida e efeito de brilho (glow).
+- O status do processo muda para `ATIVO ●`.
+- No painel central, os **registradores da MMU** são atualizados:
+  - **PROCESSO ATIVO** exibe o PID selecionado.
+  - **PTBR** exibe o endereço base da tabela de páginas do processo.
+- Uma mensagem de confirmação aparece brevemente na parte inferior da tela.
+
+> **Dica:** Você pode trocar de processo a qualquer momento clicando em outro card. A MMU é atualizada imediatamente.
+
+### 9.3 Passo 2 — Acessar uma variável
+
+Com um processo ativo, clique em um dos **4 botões de variável** listados no card (ex: `alpha [P0+0x120]`).
+
+O rótulo de cada botão informa:
+- **Nome da variável** (ex: `alpha`)
+- **Página virtual** em que ela reside (ex: `P0` = página 0)
+- **Offset** dentro da página (ex: `0x120`)
+
+O que acontece ao clicar:
+
+1. O **painel central** é preenchido com os 5 passos da tradução, que aparecem com animação escalonada (um por vez).
+2. O **frame 0** da RAM pisca em azul neon — representa o acesso à tabela de páginas.
+3. Após ~0,9 segundos, o **frame de dados** do processo pisca — representa o acesso ao dado em si.
+
+### 9.4 Lendo os 5 passos da tradução (painel central)
+
+| Passo | O que ler |
+|-------|-----------|
+| **1 — Decomposição** | O endereço lógico é dividido em dois campos: o número da **página virtual** (bits superiores) e o **deslocamento/offset** (bits inferiores, 10 bits pois a página tem 1024 bytes). |
+| **2 — Acesso ao frame 0** | A MMU usa o PTBR do processo para calcular onde, dentro do frame 0, está a entrada da tabela correspondente à página solicitada. |
+| **3 — Tabela de páginas** | A tabela completa do processo é exibida. A linha da página acessada fica destacada em azul, mostrando para qual frame físico ela aponta. |
+| **4 — Cálculo do endereço físico** | A fórmula `Frame × 1024 + Offset` é resolvida com os valores reais, mostrando cada etapa da conta. |
+| **5 — Resultado final** | O endereço físico final aparece em destaque com glow neon. Este é o endereço que a CPU usaria para acessar o dado na RAM. |
+
+### 9.5 Lendo o painel direito (RAM)
+
+| Cor do frame | Significado |
+|-------------|-------------|
+| Azul escuro | Frame pertence ao processo **P1** |
+| Roxo escuro | Frame pertence ao processo **P2** |
+| Âmbar escuro | Frame pertence ao processo **P3** |
+| Cinza escuro (com borda) | Frame do **sistema** (frame 0 = tabelas de páginas) |
+| Quase preto | Frame **livre** (não alocado a nenhum processo) |
+
+Ao lado de cada frame você vê o **intervalo de endereços físicos** que ele ocupa (ex: `0x1400–0x17FF` para o frame 5).
+
+Quando uma variável é acessada, os frames relevantes **piscam em azul** para indicar o acesso em progresso.
+
+### 9.6 Experimentando diferentes cenários
+
+Para explorar o simulador de forma completa, experimente:
+
+1. Clicar em **todas as variáveis de P1** e observar como os frames 5, 8, 9 e 11 piscam alternadamente na RAM.
+2. Trocar para **P2** e acessar variáveis — observe que os frames acessados mudam (1, 2, 12, 13) e a MMU exibe um PTBR diferente (`0x0100`).
+3. Comparar as tabelas de páginas de P1, P2 e P3 — note que cada processo tem seu próprio espaço de endereçamento virtual, mas compartilham a mesma RAM física.
+4. Observe que o **frame 0 sempre pisca primeiro** (leitura da tabela), independentemente do processo ou variável — isso ilustra o custo extra de acesso à memória que a TLB resolve (não implementado nesta parte).
+
+### 9.7 Dicas de navegação
+
+- Você pode clicar diretamente no botão de variável de um processo inativo — o simulador ativa o processo automaticamente e depois executa a tradução.
+- Não há botão de "reset" — o estado do simulador é reiniciado ao recarregar a página (`F5` ou `Ctrl+R`).
+- A página **não armazena nenhum dado** — tudo é calculado em tempo real a cada clique.
