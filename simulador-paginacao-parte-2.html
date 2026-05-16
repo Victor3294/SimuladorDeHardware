@@ -865,9 +865,9 @@ function closeModal() {
 }
 
 function allocatePage(frameNum) {
-  closeModal();
   if (!pendingOp) return;
   const { pid, varIdx, faultType } = pendingOp;
+  closeModal();
   const proc = PROCESSES[pid];
   const variable = proc.vars[varIdx];
   const pageEntry = proc.pages[variable.page];
@@ -903,9 +903,9 @@ function allocatePage(frameNum) {
 }
 
 function evictAndAllocate(victimFrame) {
-  closeModal();
   if (!pendingOp) return;
   const { pid, varIdx, faultType } = pendingOp;
+  closeModal();
   const proc = PROCESSES[pid];
   const variable = proc.vars[varIdx];
 
