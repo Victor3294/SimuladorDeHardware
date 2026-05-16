@@ -1,0 +1,1052 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Simulador de Paginação – Parte 2</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0e1a;
+    --panel: #0f1628;
+    --panel2: #131c34;
+    --border: #1e2d50;
+    --accent: #00d4ff;
+    --accent2: #ff6b35;
+    --accent3: #7fff6b;
+    --accent4: #ff6bdb;
+    --p1: #3b82f6;
+    --p1-dim: #1e3a5f;
+    --p2: #a855f7;
+    --p2-dim: #3b1f5e;
+    --p3: #f59e0b;
+    --p3-dim: #5c3a00;
+    --sys: #1e2d50;
+    --swap-color: #ff4444;
+    --swap-dim: #3a0f0f;
+    --free-color: #1a2540;
+    --text: #c8d8f0;
+    --text-dim: #5a7099;
+    --mono: 'Share Tech Mono', monospace;
+    --sans: 'Rajdhani', sans-serif;
+    --glow: 0 0 12px rgba(0,212,255,0.4);
+    --glow-p1: 0 0 14px rgba(59,130,246,0.6);
+    --glow-p2: 0 0 14px rgba(168,85,247,0.6);
+    --glow-p3: 0 0 14px rgba(245,158,11,0.6);
+    --glow-fault: 0 0 20px rgba(255,68,68,0.6);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(
+      0deg, transparent, transparent 2px,
+      rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px
+    );
+    pointer-events: none; z-index: 999;
+  }
+
+  header {
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 24px;
+    display: flex; align-items: center; gap: 16px;
+    position: sticky; top: 0; z-index: 100;
+  }
+
+  .logo-chip {
+    width: 36px; height: 36px;
+    background: var(--swap-color);
+    clip-path: polygon(20% 0%,80% 0%,100% 20%,100% 80%,80% 100%,20% 100%,0% 80%,0% 20%);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; color: #fff;
+    font-family: var(--mono);
+    animation: chipPulse 3s ease-in-out infinite;
+  }
+
+  @keyframes chipPulse {
+    0%,100% { box-shadow: 0 0 8px var(--swap-color); }
+    50% { box-shadow: 0 0 24px var(--swap-color), 0 0 40px rgba(255,68,68,0.3); }
+  }
+
+  header h1 { font-size: 18px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; color: var(--accent); text-shadow: var(--glow); }
+  header .sub { font-size: 11px; color: var(--text-dim); letter-spacing: 2px; font-family: var(--mono); }
+
+  .badge { margin-left: auto; background: rgba(255,68,68,0.1); border: 1px solid rgba(255,68,68,0.4); color: var(--swap-color); padding: 4px 12px; border-radius: 2px; font-size: 11px; font-family: var(--mono); letter-spacing: 2px; }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 300px 1fr 260px;
+    gap: 0;
+    height: calc(100vh - 57px);
+  }
+
+  /* ── LEFT PANEL ── */
+  .panel-left { background: var(--panel); border-right: 1px solid var(--border); overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+
+  .panel-title { font-size: 10px; letter-spacing: 3px; text-transform: uppercase; color: var(--text-dim); font-family: var(--mono); border-bottom: 1px solid var(--border); padding-bottom: 8px; margin-bottom: 4px; }
+
+  .process-card { border: 1px solid var(--border); border-radius: 4px; overflow: hidden; cursor: pointer; transition: all 0.2s; }
+  .process-card:hover { transform: translateX(3px); }
+  .process-card.active-p1 { border-color: var(--p1); box-shadow: var(--glow-p1); }
+  .process-card.active-p2 { border-color: var(--p2); box-shadow: var(--glow-p2); }
+  .process-card.active-p3 { border-color: var(--p3); box-shadow: var(--glow-p3); }
+
+  .process-header { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: var(--panel2); }
+  .proc-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .p1 .proc-dot { background: var(--p1); box-shadow: 0 0 6px var(--p1); }
+  .p2 .proc-dot { background: var(--p2); box-shadow: 0 0 6px var(--p2); }
+  .p3 .proc-dot { background: var(--p3); box-shadow: 0 0 6px var(--p3); }
+  .proc-name { font-size: 15px; font-weight: 700; letter-spacing: 2px; }
+  .p1 .proc-name { color: var(--p1); }
+  .p2 .proc-name { color: var(--p2); }
+  .p3 .proc-name { color: var(--p3); }
+  .proc-status { font-size: 10px; font-family: var(--mono); color: var(--text-dim); margin-left: auto; }
+
+  .tcb-block { padding: 8px 12px; background: rgba(0,0,0,0.2); }
+  .tcb-label { font-size: 9px; letter-spacing: 2px; color: var(--text-dim); font-family: var(--mono); margin-bottom: 5px; }
+  .tcb-row { display: flex; justify-content: space-between; align-items: center; font-size: 11px; font-family: var(--mono); padding: 2px 0; }
+  .tcb-key { color: var(--text-dim); }
+  .tcb-val { color: var(--accent3); }
+
+  .vars-block { padding: 8px 12px 12px; }
+  .vars-label { font-size: 9px; letter-spacing: 2px; color: var(--text-dim); font-family: var(--mono); margin-bottom: 6px; }
+
+  .var-btn {
+    display: flex; align-items: center; gap: 8px;
+    width: 100%; margin-bottom: 4px;
+    padding: 7px 10px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    cursor: pointer; transition: all 0.15s;
+    font-family: var(--mono); font-size: 11px;
+    color: var(--text); text-align: left;
+  }
+  .var-btn:hover { background: rgba(255,255,255,0.07); border-color: rgba(255,255,255,0.2); transform: translateX(2px); }
+  .p1 .var-btn:hover { border-color: var(--p1); color: var(--p1); }
+  .p2 .var-btn:hover { border-color: var(--p2); color: var(--p2); }
+  .p3 .var-btn:hover { border-color: var(--p3); color: var(--p3); }
+  .var-icon { font-size: 10px; opacity: 0.5; }
+  .var-addr { margin-left: auto; font-size: 10px; color: var(--text-dim); }
+
+  .page-state-badge {
+    font-size: 9px; padding: 1px 5px; border-radius: 2px;
+    font-family: var(--mono); font-weight: 700;
+  }
+  .state-inv { background: rgba(90,112,153,0.2); color: var(--text-dim); border: 1px solid var(--text-dim); }
+  .state-ram { background: rgba(127,255,107,0.15); color: var(--accent3); border: 1px solid var(--accent3); }
+  .state-swap { background: rgba(255,68,68,0.2); color: var(--swap-color); border: 1px solid var(--swap-color); }
+
+  /* ── CENTER PANEL ── */
+  .panel-center { overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+
+  .regs-row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .reg-widget { flex: 1; min-width: 100px; background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 3px; padding: 8px 12px; }
+  .reg-name { font-size: 9px; letter-spacing: 2px; color: var(--text-dim); font-family: var(--mono); margin-bottom: 4px; }
+  .reg-val { font-size: 13px; font-family: var(--mono); color: var(--accent3); }
+
+  .mmu-container { background: var(--panel); border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+  .mmu-title-bar { background: var(--panel2); padding: 10px 16px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--border); }
+  .mmu-title-bar h2 { font-size: 12px; letter-spacing: 3px; text-transform: uppercase; color: var(--accent); font-family: var(--mono); }
+  .mmu-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent3); box-shadow: 0 0 6px var(--accent3); animation: blink 1.5s ease-in-out infinite; }
+  @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.2; } }
+
+  .mmu-body { padding: 16px; }
+  .idle-msg { text-align: center; padding: 40px; color: var(--text-dim); font-family: var(--mono); font-size: 12px; line-height: 2; }
+  .idle-msg .arrow { font-size: 24px; color: var(--border); display: block; margin-bottom: 8px; }
+
+  .steps { display: flex; flex-direction: column; gap: 10px; }
+  .step { border: 1px solid var(--border); border-radius: 4px; overflow: hidden; opacity: 0; transform: translateY(10px); animation: stepIn 0.3s forwards; }
+  @keyframes stepIn { to { opacity: 1; transform: translateY(0); } }
+  .step:nth-child(1) { animation-delay: 0.05s; }
+  .step:nth-child(2) { animation-delay: 0.2s; }
+  .step:nth-child(3) { animation-delay: 0.35s; }
+  .step:nth-child(4) { animation-delay: 0.5s; }
+  .step:nth-child(5) { animation-delay: 0.65s; }
+
+  .step-header { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: var(--panel2); }
+  .step-num { width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: var(--bg); font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; font-family: var(--mono); flex-shrink: 0; }
+  .step-num.fault { background: var(--swap-color); }
+  .step-num.ok { background: var(--accent3); }
+  .step-title { font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: var(--text); font-family: var(--mono); }
+  .step-body { padding: 12px; }
+
+  .addr-decomp { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 13px; flex-wrap: wrap; }
+  .addr-box { background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 3px; padding: 6px 12px; }
+  .addr-box .label { font-size: 9px; color: var(--text-dim); display: block; margin-bottom: 2px; }
+  .addr-box .val { font-size: 15px; }
+  .addr-box.page .val { color: var(--accent2); }
+  .addr-box.offset .val { color: var(--accent3); }
+  .addr-box.frame .val { color: var(--accent); }
+  .addr-box.phys .val { color: var(--accent4); }
+  .eq { color: var(--text-dim); }
+  .arrow-right { color: var(--text-dim); font-size: 18px; }
+
+  .page-table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 12px; }
+  .page-table th { background: rgba(0,0,0,0.3); padding: 6px 10px; text-align: left; color: var(--text-dim); font-size: 10px; letter-spacing: 1px; font-weight: 400; border-bottom: 1px solid var(--border); }
+  .page-table td { padding: 7px 10px; border-bottom: 1px solid rgba(30,45,80,0.5); color: var(--text); }
+  .page-table tr.highlight td { background: rgba(0,212,255,0.08); color: var(--accent); }
+  .page-table tr.highlight-fault td { background: rgba(255,68,68,0.1); color: var(--swap-color); }
+  .page-table tr.highlight-swap td { background: rgba(255,107,53,0.1); color: var(--accent2); }
+
+  .formula-box { background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 3px; padding: 12px 16px; font-family: var(--mono); font-size: 13px; line-height: 2; }
+  .formula-box .formula-line { color: var(--text-dim); font-size: 11px; }
+  .formula-box .formula-result { font-size: 16px; color: var(--accent4); }
+
+  .result-banner { background: linear-gradient(90deg, rgba(0,212,255,0.05), rgba(0,212,255,0.15), rgba(0,212,255,0.05)); border: 1px solid var(--accent); border-radius: 3px; padding: 14px 16px; text-align: center; font-family: var(--mono); animation: resultPulse 1s ease-out; }
+  .result-banner.fault-banner { background: linear-gradient(90deg, rgba(255,68,68,0.05), rgba(255,68,68,0.15), rgba(255,68,68,0.05)); border-color: var(--swap-color); animation: faultPulse 0.8s ease-out; }
+  @keyframes resultPulse { 0% { box-shadow: 0 0 0 0 rgba(0,212,255,0.6); } 100% { box-shadow: var(--glow); } }
+  @keyframes faultPulse { 0% { box-shadow: 0 0 0 0 rgba(255,68,68,0.8); } 100% { box-shadow: var(--glow-fault); } }
+
+  .result-banner .result-label { font-size: 10px; color: var(--text-dim); letter-spacing: 2px; }
+  .result-banner .result-addr { font-size: 22px; color: var(--accent); text-shadow: var(--glow); }
+  .result-banner.fault-banner .result-addr { color: var(--swap-color); text-shadow: var(--glow-fault); font-size: 16px; }
+
+  /* Modal de substituição */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 500; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(3px); animation: fadeIn 0.2s ease-out; }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+  .modal-box { background: var(--panel); border: 1px solid var(--swap-color); border-radius: 6px; padding: 24px; max-width: 520px; width: 90%; box-shadow: var(--glow-fault); font-family: var(--mono); }
+  .modal-title { font-size: 14px; letter-spacing: 3px; color: var(--swap-color); text-transform: uppercase; margin-bottom: 8px; display: flex; align-items: center; gap: 10px; }
+  .modal-title::before { content: '⚠'; font-size: 18px; }
+  .modal-sub { font-size: 11px; color: var(--text-dim); margin-bottom: 16px; line-height: 1.6; }
+  .modal-sub strong { color: var(--text); }
+
+  .frame-choice-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; max-height: 280px; overflow-y: auto; }
+  .frame-choice-btn {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 14px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    cursor: pointer; transition: all 0.15s;
+    font-family: var(--mono); font-size: 12px;
+    color: var(--text); text-align: left;
+  }
+  .frame-choice-btn:hover { background: rgba(255,68,68,0.1); border-color: var(--swap-color); color: var(--swap-color); }
+  .frame-choice-btn .fc-num { font-size: 16px; font-weight: 700; width: 28px; color: var(--accent); }
+  .frame-choice-btn .fc-info { flex: 1; }
+  .frame-choice-btn .fc-addr { color: var(--text-dim); font-size: 10px; }
+  .frame-choice-btn .fc-owner { font-size: 10px; padding: 2px 6px; border-radius: 2px; }
+
+  .modal-cancel { background: transparent; border: 1px solid var(--border); color: var(--text-dim); padding: 8px 16px; border-radius: 3px; cursor: pointer; font-family: var(--mono); font-size: 11px; transition: all 0.15s; }
+  .modal-cancel:hover { border-color: var(--text-dim); color: var(--text); }
+
+  /* ── RIGHT PANEL (RAM + SWAP) ── */
+  .panel-right { background: var(--panel); border-left: 1px solid var(--border); overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 0; }
+
+  .ram-section-title { font-size: 9px; letter-spacing: 2px; text-transform: uppercase; color: var(--text-dim); font-family: var(--mono); margin-bottom: 6px; margin-top: 12px; }
+  .ram-section-title:first-child { margin-top: 0; }
+
+  .ram-grid { display: flex; flex-direction: column; gap: 2px; }
+
+  .frame-row {
+    display: flex; align-items: center; gap: 5px;
+    padding: 4px 7px;
+    border-radius: 3px;
+    border: 1px solid transparent;
+    transition: all 0.2s;
+    font-family: var(--mono); font-size: 10px;
+    position: relative;
+    cursor: default;
+  }
+  .frame-num { width: 20px; color: var(--text-dim); text-align: right; flex-shrink: 0; }
+  .frame-bar { flex: 1; height: 16px; border-radius: 2px; background: rgba(255,255,255,0.04); border: 1px solid var(--border); position: relative; overflow: hidden; }
+  .frame-bar-fill { height: 100%; transition: background 0.4s; }
+  .frame-addr { color: var(--text-dim); font-size: 9px; width: 60px; text-align: right; flex-shrink: 0; }
+  .frame-tag { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); font-size: 9px; letter-spacing: 1px; opacity: 0.8; white-space: nowrap; }
+
+  .frame-row.sys .frame-bar-fill { background: var(--sys); width: 100%; }
+  .frame-row.kernel-reserved .frame-bar-fill { background: #1a1a2e; width: 100%; }
+  .frame-row.kernel-reserved { opacity: 0.5; }
+  .frame-row.p1-frame .frame-bar-fill { background: var(--p1-dim); width: 100%; }
+  .frame-row.p2-frame .frame-bar-fill { background: var(--p2-dim); width: 100%; }
+  .frame-row.p3-frame .frame-bar-fill { background: var(--p3-dim); width: 100%; }
+  .frame-row.swap-block .frame-bar-fill { background: var(--swap-dim); width: 100%; }
+  .frame-row.free .frame-bar-fill { width: 0; }
+
+  .frame-row.flash-frame { animation: flashFrameAnim 0.6s ease-out 3; }
+  @keyframes flashFrameAnim { 0%,100% { background: transparent; } 50% { background: rgba(0,212,255,0.15); border-color: var(--accent); } }
+
+  .frame-row.flash-fault { animation: flashFault 0.5s ease-out 4; }
+  @keyframes flashFault { 0%,100% { background: transparent; } 50% { background: rgba(255,68,68,0.15); border-color: var(--swap-color); } }
+
+  .swap-divider { border-top: 1px dashed var(--border); margin: 10px 0 8px; }
+
+  .legend { display: flex; flex-direction: column; gap: 4px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+  .legend-item { display: flex; align-items: center; gap: 8px; font-size: 10px; font-family: var(--mono); color: var(--text-dim); }
+  .legend-dot { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+
+  .info-toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--panel2); border: 1px solid var(--accent); border-radius: 4px; padding: 10px 20px; font-family: var(--mono); font-size: 12px; color: var(--accent); box-shadow: var(--glow); z-index: 200; opacity: 0; transition: opacity 0.3s; pointer-events: none; white-space: nowrap; }
+  .info-toast.show { opacity: 1; }
+  .info-toast.fault { border-color: var(--swap-color); color: var(--swap-color); box-shadow: var(--glow-fault); }
+
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .stat-bar { display: flex; gap: 8px; padding: 6px 12px; background: rgba(0,0,0,0.2); border-bottom: 1px solid var(--border); font-family: var(--mono); font-size: 10px; }
+  .stat-item { display: flex; align-items: center; gap: 5px; }
+  .stat-dot { width: 6px; height: 6px; border-radius: 50%; }
+  .stat-val { color: var(--accent); }
+  .stat-label { color: var(--text-dim); }
+
+  .section-sep { border-top: 1px solid var(--border); margin: 4px 0; }
+
+  .info-box { background: rgba(0,212,255,0.05); border: 1px solid rgba(0,212,255,0.2); border-radius: 3px; padding: 8px 12px; font-family: var(--mono); font-size: 11px; color: var(--text-dim); line-height: 1.7; margin-bottom: 4px; }
+  .info-box.warn { background: rgba(255,68,68,0.05); border-color: rgba(255,68,68,0.3); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo-chip">PF</div>
+  <div>
+    <h1>Simulador de Paginação</h1>
+    <div class="sub">PARTE 2 — PAGE FAULT · SWAP · ALOCAÇÃO SOB DEMANDA</div>
+  </div>
+  <div class="badge">IFSC · SO · ADS</div>
+</header>
+
+<div class="layout">
+
+  <!-- LEFT: Processes -->
+  <div class="panel-left">
+    <div class="panel-title">◈ Processos / TCB</div>
+    <div id="proc-list"></div>
+  </div>
+
+  <!-- CENTER: MMU -->
+  <div class="panel-center">
+    <div class="stat-bar" id="stat-bar">
+      <div class="stat-item"><div class="stat-dot" style="background:var(--accent3)"></div><span class="stat-label">FRAMES LIVRES:</span><span class="stat-val" id="stat-free">8</span></div>
+      <div class="stat-item"><div class="stat-dot" style="background:var(--swap-color)"></div><span class="stat-label">SWAP USADO:</span><span class="stat-val" id="stat-swap">0</span>/8</div>
+      <div class="stat-item"><div class="stat-dot" style="background:var(--accent)"></div><span class="stat-label">PAGE FAULTS:</span><span class="stat-val" id="stat-faults">0</span></div>
+      <div class="stat-item"><div class="stat-dot" style="background:var(--accent2)"></div><span class="stat-label">TROCAS:</span><span class="stat-val" id="stat-swaps">0</span></div>
+    </div>
+
+    <div class="regs-row" id="regs-row">
+      <div class="reg-widget">
+        <div class="reg-name">PROCESSO ATIVO</div>
+        <div class="reg-val" id="reg-proc">—</div>
+      </div>
+      <div class="reg-widget">
+        <div class="reg-name">PTBR</div>
+        <div class="reg-val" id="reg-ptbr">—</div>
+      </div>
+      <div class="reg-widget">
+        <div class="reg-name">PAGE SIZE</div>
+        <div class="reg-val">1024 B</div>
+      </div>
+      <div class="reg-widget">
+        <div class="reg-name">FRAMES USUÁRIO</div>
+        <div class="reg-val">4–11</div>
+      </div>
+    </div>
+
+    <div class="mmu-container">
+      <div class="mmu-title-bar">
+        <div class="mmu-dot"></div>
+        <h2>MMU — Memory Management Unit</h2>
+      </div>
+      <div class="mmu-body" id="mmu-body">
+        <div class="idle-msg">
+          <span class="arrow">⬅</span>
+          Selecione um processo no painel esquerdo<br>
+          e depois clique em uma variável para<br>
+          iniciar a simulação de acesso à memória.<br><br>
+          <span style="color:var(--swap-color); font-size:11px">⚠ Todas as páginas começam com estado INV</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: RAM + SWAP -->
+  <div class="panel-right">
+    <div class="panel-title">◈ Memória Física + Swap</div>
+
+    <div class="ram-section-title">▸ KERNEL / SO (frames 0–3)</div>
+    <div class="ram-grid" id="ram-kernel"></div>
+
+    <div class="ram-section-title">▸ RAM USUÁRIO (frames 4–11)</div>
+    <div class="ram-grid" id="ram-user"></div>
+
+    <div class="ram-section-title">▸ RESERVADO SO (frames 12–15)</div>
+    <div class="ram-grid" id="ram-reserved"></div>
+
+    <div class="swap-divider"></div>
+    <div class="ram-section-title">▸ ÁREA DE SWAP (blocos 16–23)</div>
+    <div class="ram-grid" id="ram-swap"></div>
+
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:var(--sys)"></div>Kernel / Tabelas</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--p1-dim)"></div>P1 (RAM)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--p2-dim)"></div>P2 (RAM)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--p3-dim)"></div>P3 (RAM)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--swap-dim); border:1px solid var(--swap-color)"></div>Em SWAP</div>
+      <div class="legend-item"><div class="legend-dot" style="background:rgba(255,255,255,0.04); border:1px solid #1e2d50"></div>Livre</div>
+    </div>
+  </div>
+</div>
+
+<div class="info-toast" id="toast"></div>
+
+<script>
+// ─── CONSTANTS ───────────────────────────────────────────────────────────────
+
+const PAGE_SIZE = 1024;
+
+// ─── STATE ───────────────────────────────────────────────────────────────────
+
+// Page table entry: { state: 'INV'|'RAM'|'SWAP', location: null|frameNum|swapBlock }
+function mkPage() { return { state: 'INV', location: null }; }
+
+const PROCESSES = {
+  P1: {
+    ptbr: '0x0000', ptbrOffset: 0x0000,
+    color: 'p1', cssVar: 'var(--p1)',
+    pages: [ mkPage(), mkPage(), mkPage(), mkPage() ],
+    vars: [
+      { name: 'alpha',  page: 0, offset: 0x120 },
+      { name: 'beta',   page: 1, offset: 0x050 },
+      { name: 'gamma',  page: 2, offset: 0x2A0 },
+      { name: 'delta',  page: 3, offset: 0x3F0 },
+    ]
+  },
+  P2: {
+    ptbr: '0x0100', ptbrOffset: 0x0100,
+    color: 'p2', cssVar: 'var(--p2)',
+    pages: [ mkPage(), mkPage(), mkPage(), mkPage() ],
+    vars: [
+      { name: 'omega',  page: 0, offset: 0x080 },
+      { name: 'sigma',  page: 1, offset: 0x1C0 },
+      { name: 'lambda', page: 2, offset: 0x300 },
+      { name: 'psi',    page: 3, offset: 0x010 },
+    ]
+  },
+  P3: {
+    ptbr: '0x0200', ptbrOffset: 0x0200,
+    color: 'p3', cssVar: 'var(--p3)',
+    pages: [ mkPage(), mkPage(), mkPage(), mkPage() ],
+    vars: [
+      { name: 'xenon',  page: 0, offset: 0x200 },
+      { name: 'argon',  page: 1, offset: 0x0A0 },
+      { name: 'neon',   page: 2, offset: 0x380 },
+      { name: 'kryp',   page: 3, offset: 0x1B0 },
+    ]
+  }
+};
+
+// frames[4..11] = user frames. null = free, else { pid, page }
+const userFrames = new Array(12).fill(null); // indices 0..11 but only 4..11 matter
+
+// swap blocks[16..23]. null = free, else { pid, page }
+const swapBlocks = {}; // key = blockNum (16..23)
+
+let activeProcess = null;
+let pageFaultCount = 0;
+let swapCount = 0;
+
+// pending operation when modal open
+let pendingOp = null;
+
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
+
+function hex(n, pad=4) { return '0x' + n.toString(16).toUpperCase().padStart(pad,'0'); }
+
+function showToast(msg, type='') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'info-toast show' + (type ? ' ' + type : '');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+function freeUserFrames() {
+  const list = [];
+  for (let i = 4; i <= 11; i++) if (!userFrames[i]) list.push(i);
+  return list;
+}
+
+function occupiedUserFrames() {
+  const list = [];
+  for (let i = 4; i <= 11; i++) if (userFrames[i]) list.push(i);
+  return list;
+}
+
+function freeSwapBlocks() {
+  const list = [];
+  for (let b = 16; b <= 23; b++) if (!swapBlocks[b]) list.push(b);
+  return list;
+}
+
+function updateStats() {
+  document.getElementById('stat-free').textContent = freeUserFrames().length;
+  document.getElementById('stat-swap').textContent = Object.values(swapBlocks).filter(Boolean).length;
+  document.getElementById('stat-faults').textContent = pageFaultCount;
+  document.getElementById('stat-swaps').textContent = swapCount;
+}
+
+function procColorClass(pid) {
+  return pid === 'P1' ? 'p1-frame' : pid === 'P2' ? 'p2-frame' : 'p3-frame';
+}
+
+// ─── RAM RENDERING ───────────────────────────────────────────────────────────
+
+function buildRAM() {
+  // Kernel (0-3)
+  const kernel = document.getElementById('ram-kernel');
+  kernel.innerHTML = '';
+  for (let i = 0; i < 4; i++) {
+    const lbl = i === 0 ? 'PAGE TABLES' : i === 1 ? 'KERNEL' : i === 2 ? 'KERNEL' : 'SO';
+    kernel.innerHTML += frameHTML(i, 'sys', lbl, hex(i*PAGE_SIZE) + '-' + hex(i*PAGE_SIZE+PAGE_SIZE-1).slice(2));
+  }
+  // User (4-11)
+  const user = document.getElementById('ram-user');
+  user.innerHTML = '';
+  for (let i = 4; i <= 11; i++) {
+    const occ = userFrames[i];
+    let cls = occ ? procColorClass(occ.pid) : 'free';
+    let lbl = occ ? `${occ.pid}[${occ.page}]` : '';
+    user.innerHTML += frameHTML(i, cls, lbl, hex(i*PAGE_SIZE) + '-' + hex(i*PAGE_SIZE+PAGE_SIZE-1).slice(2));
+  }
+  // Reserved (12-15)
+  const res = document.getElementById('ram-reserved');
+  res.innerHTML = '';
+  for (let i = 12; i <= 15; i++) {
+    res.innerHTML += frameHTML(i, 'kernel-reserved', 'RESERVADO SO', hex(i*PAGE_SIZE) + '-' + hex(i*PAGE_SIZE+PAGE_SIZE-1).slice(2));
+  }
+  // Swap (16-23)
+  const sw = document.getElementById('ram-swap');
+  sw.innerHTML = '';
+  for (let b = 16; b <= 23; b++) {
+    const occ = swapBlocks[b];
+    let cls = occ ? 'swap-block' : 'free';
+    let lbl = occ ? `${occ.pid}[${occ.page}]` : '';
+    sw.innerHTML += frameHTML(b, cls, lbl, '— DISCO —');
+  }
+}
+
+function frameHTML(num, cls, lbl, addr) {
+  return `<div class="frame-row ${cls}" id="frame-${num}">
+    <span class="frame-num">${num}</span>
+    <div class="frame-bar">
+      <div class="frame-bar-fill"></div>
+      ${lbl ? `<span class="frame-tag">${lbl}</span>` : ''}
+    </div>
+    <span class="frame-addr">${addr}</span>
+  </div>`;
+}
+
+function flashFrame(num, type='') {
+  const el = document.getElementById(`frame-${num}`);
+  if (!el) return;
+  el.classList.remove('flash-frame','flash-fault');
+  void el.offsetWidth;
+  el.classList.add(type === 'fault' ? 'flash-fault' : 'flash-frame');
+  setTimeout(() => el.classList.remove('flash-frame','flash-fault'), 2200);
+}
+
+// ─── PROCESS PANEL ───────────────────────────────────────────────────────────
+
+function buildProcesses() {
+  const container = document.getElementById('proc-list');
+  container.innerHTML = '';
+  Object.entries(PROCESSES).forEach(([pid, proc]) => {
+    const card = document.createElement('div');
+    card.className = `process-card ${proc.color}`;
+    card.id = `card-${pid}`;
+    card.innerHTML = `
+      <div class="process-header">
+        <div class="proc-dot"></div>
+        <span class="proc-name">${pid}</span>
+        <span class="proc-status" id="status-${pid}">INATIVO</span>
+      </div>
+      <div class="tcb-block">
+        <div class="tcb-label">◆ TCB</div>
+        <div class="tcb-row"><span class="tcb-key">PID</span><span class="tcb-val">${pid}</span></div>
+        <div class="tcb-row"><span class="tcb-key">PTBR</span><span class="tcb-val">${proc.ptbr}</span></div>
+        <div class="tcb-row"><span class="tcb-key">PÁGINAS</span><span class="tcb-val">4</span></div>
+      </div>
+      <div class="vars-block" id="vars-${pid}">
+        <div class="vars-label">◆ Variáveis</div>
+        ${proc.vars.map((v,i) => varBtnHTML(pid, proc, v, i)).join('')}
+      </div>
+    `;
+    card.querySelector('.process-header').addEventListener('click', () => selectProcess(pid));
+    container.appendChild(card);
+  });
+}
+
+function varBtnHTML(pid, proc, v, i) {
+  const pg = proc.pages[v.page];
+  let badge = '';
+  if (pg.state === 'INV')  badge = `<span class="page-state-badge state-inv">INV</span>`;
+  if (pg.state === 'RAM')  badge = `<span class="page-state-badge state-ram">RAM:${pg.location}</span>`;
+  if (pg.state === 'SWAP') badge = `<span class="page-state-badge state-swap">SWP:${pg.location}</span>`;
+  return `<button class="var-btn" onclick="accessVariable('${pid}',${i})">
+    <span class="var-icon">▸</span>
+    <span>${v.name}</span>
+    ${badge}
+    <span class="var-addr">[P${v.page}+${hex(v.offset)}]</span>
+  </button>`;
+}
+
+function refreshVarBtns(pid) {
+  const proc = PROCESSES[pid];
+  const el = document.getElementById(`vars-${pid}`);
+  if (!el) return;
+  el.innerHTML = `<div class="vars-label">◆ Variáveis</div>` +
+    proc.vars.map((v,i) => varBtnHTML(pid, proc, v, i)).join('');
+}
+
+// ─── SELECT PROCESS ──────────────────────────────────────────────────────────
+
+function selectProcess(pid) {
+  activeProcess = pid;
+  const proc = PROCESSES[pid];
+  document.querySelectorAll('.process-card').forEach(c => c.classList.remove('active-p1','active-p2','active-p3'));
+  document.getElementById(`card-${pid}`).classList.add(`active-${proc.color}`);
+  document.querySelectorAll('[id^="status-"]').forEach(s => s.textContent = 'INATIVO');
+  document.getElementById(`status-${pid}`).textContent = 'ATIVO ●';
+  document.getElementById('reg-proc').textContent = pid;
+  document.getElementById('reg-ptbr').textContent = proc.ptbr;
+  document.getElementById('mmu-body').innerHTML = `
+    <div class="idle-msg">
+      <span class="arrow">⬇</span>
+      Processo <strong style="color:${proc.cssVar}">${pid}</strong> selecionado.<br>
+      PTBR = <span style="color:var(--accent3)">${proc.ptbr}</span><br>
+      Clique em uma variável para acessar.
+    </div>`;
+  showToast(`Processo ${pid} ativado — PTBR = ${proc.ptbr}`);
+}
+
+// ─── MAIN ACCESS LOGIC ───────────────────────────────────────────────────────
+
+function accessVariable(pid, varIdx) {
+  if (activeProcess !== pid) {
+    selectProcess(pid);
+    setTimeout(() => accessVariable(pid, varIdx), 300);
+    return;
+  }
+  const proc = PROCESSES[pid];
+  const variable = proc.vars[varIdx];
+  const pageEntry = proc.pages[variable.page];
+
+  if (pageEntry.state === 'RAM') {
+    // Normal translation
+    const physFrame = pageEntry.location;
+    const physAddr  = physFrame * PAGE_SIZE + variable.offset;
+    const logicalAddr = variable.page * PAGE_SIZE + variable.offset;
+    const ptEntry   = proc.ptbrOffset + variable.page * 4;
+    renderMMUNormal(pid, proc, variable, variable.page, variable.offset, logicalAddr, physFrame, physAddr, ptEntry);
+    flashFrame(0);
+    setTimeout(() => flashFrame(physFrame), 900);
+    showToast(`✓ Tradução normal — Endereço físico: ${hex(physAddr)}`);
+    return;
+  }
+
+  // PAGE FAULT
+  pageFaultCount++;
+  updateStats();
+
+  const faultType = pageEntry.state; // 'INV' or 'SWAP'
+  const frees = freeUserFrames();
+
+  if (frees.length > 0) {
+    // Has free frame — ask which one
+    renderMMUFault(pid, proc, variable, faultType, false);
+    flashFrame(variable.page + 4 < 12 ? variable.page + 4 : 4, 'fault');
+    openFrameModal(pid, varIdx, faultType, false);
+  } else {
+    // No free frame — need eviction
+    renderMMUFault(pid, proc, variable, faultType, true);
+    showToast('⚠ PAGE FAULT — sem frames livres! Escolha página vítima.', 'fault');
+    openFrameModal(pid, varIdx, faultType, true);
+  }
+}
+
+// ─── MMU RENDERS ─────────────────────────────────────────────────────────────
+
+function renderMMUNormal(pid, proc, variable, logicalPage, offset, logicalAddr, physFrame, physAddr, ptEntryAddr) {
+  const mmu = document.getElementById('mmu-body');
+  const pageEntries = proc.pages;
+  mmu.innerHTML = `<div class="steps">
+    <div class="step">
+      <div class="step-header"><div class="step-num ok">1</div><div class="step-title">Decomposição do Endereço Lógico</div></div>
+      <div class="step-body">
+        <div class="addr-decomp">
+          <div class="addr-box"><span class="label">ENDEREÇO LÓGICO</span><span class="val">${hex(logicalAddr)}</span></div>
+          <span class="eq">=</span>
+          <div class="addr-box page"><span class="label">PÁGINA</span><span class="val">${logicalPage}</span></div>
+          <span class="eq">|</span>
+          <div class="addr-box offset"><span class="label">DESLOCAMENTO</span><span class="val">${hex(offset)}</span></div>
+        </div>
+        <div style="margin-top:8px;font-size:11px;font-family:var(--mono);color:var(--text-dim)">
+          Variável: <span style="color:var(--accent3)">${variable.name}</span> &nbsp;|&nbsp; Página: <span style="color:var(--accent2)">${logicalPage}</span> &nbsp;|&nbsp; Offset: <span style="color:var(--accent3)">${hex(offset)}</span>
+        </div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-header"><div class="step-num ok">2</div><div class="step-title">Consulta à Tabela de Páginas</div></div>
+      <div class="step-body">
+        <div class="info-box">PTBR = ${proc.ptbr} → Entrada da tabela em frame 0 + offset ${hex(ptEntryAddr)}</div>
+        <table class="page-table">
+          <thead><tr><th>PÁG</th><th>ESTADO</th><th>LOCALIZAÇÃO</th><th>END. FÍSICO</th></tr></thead>
+          <tbody>
+            ${pageEntries.map((e,i) => {
+              let stateCls = i === logicalPage ? 'highlight' : '';
+              let loc = e.state === 'RAM' ? `Frame ${e.location}` : e.state === 'SWAP' ? `Swap ${e.location}` : '—';
+              let physInfo = e.state === 'RAM' ? hex(e.location * PAGE_SIZE) : '—';
+              return `<tr class="${stateCls}"><td>${i}</td><td style="color:${e.state==='RAM'?'var(--accent3)':e.state==='SWAP'?'var(--swap-color)':'var(--text-dim)'}">${e.state}</td><td>${loc}</td><td>${physInfo}</td></tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-header"><div class="step-num ok">3</div><div class="step-title">Página Residente na RAM — Tradução Normal</div></div>
+      <div class="step-body">
+        <div class="formula-box">
+          <div class="formula-line">Endereço Físico = Frame × PAGE_SIZE + Deslocamento</div>
+          <div class="formula-line">Endereço Físico = ${physFrame} × 1024 + ${offset}</div>
+          <div class="formula-line">Endereço Físico = ${physFrame*PAGE_SIZE} + ${offset}</div>
+          <div class="formula-result">Endereço Físico = ${hex(physAddr)}</div>
+        </div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-header"><div class="step-num ok">4</div><div class="step-title">Resultado — Acesso Concluído</div></div>
+      <div class="step-body">
+        <div class="result-banner">
+          <div class="result-label">ENDEREÇO FÍSICO FINAL</div>
+          <div class="result-addr">${hex(physAddr)}</div>
+          <div style="margin-top:8px;font-size:11px;font-family:var(--mono);color:var(--text-dim)">
+            ${pid} · ${variable.name} &nbsp;|&nbsp; Pág ${logicalPage} → Frame ${physFrame} &nbsp;|&nbsp; Offset: ${hex(offset)}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderMMUFault(pid, proc, variable, faultType, needsEviction) {
+  const mmu = document.getElementById('mmu-body');
+  const pageEntries = proc.pages;
+  const lp = variable.page;
+
+  let faultMsg = faultType === 'INV'
+    ? 'Página INVÁLIDA — nunca foi carregada na RAM.'
+    : 'Página em SWAP — foi removida da RAM anteriormente.';
+
+  let nextMsg = needsEviction
+    ? '⚠ Nenhum frame livre disponível. É necessário escolher uma página vítima para substituição.'
+    : `✓ Há ${freeUserFrames().length} frame(s) livre(s). Escolha um para alocar a página.`;
+
+  mmu.innerHTML = `<div class="steps">
+    <div class="step">
+      <div class="step-header"><div class="step-num">1</div><div class="step-title">Decomposição do Endereço Lógico</div></div>
+      <div class="step-body">
+        <div class="addr-decomp">
+          <div class="addr-box"><span class="label">ENDEREÇO LÓGICO</span><span class="val">${hex(lp*PAGE_SIZE+variable.offset)}</span></div>
+          <span class="eq">=</span>
+          <div class="addr-box page"><span class="label">PÁGINA</span><span class="val">${lp}</span></div>
+          <span class="eq">|</span>
+          <div class="addr-box offset"><span class="label">DESLOCAMENTO</span><span class="val">${hex(variable.offset)}</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-header"><div class="step-num">2</div><div class="step-title">Consulta à Tabela de Páginas</div></div>
+      <div class="step-body">
+        <table class="page-table">
+          <thead><tr><th>PÁG</th><th>ESTADO</th><th>LOCALIZAÇÃO</th></tr></thead>
+          <tbody>
+            ${pageEntries.map((e,i) => {
+              let rowCls = i===lp ? (faultType==='INV'?'highlight-fault':'highlight-swap') : '';
+              let loc = e.state==='RAM'?`Frame ${e.location}`:e.state==='SWAP'?`Swap ${e.location}`:'—';
+              return `<tr class="${rowCls}"><td>${i}</td><td style="color:${e.state==='RAM'?'var(--accent3)':e.state==='SWAP'?'var(--swap-color)':'var(--text-dim)'}">${e.state}</td><td>${loc}</td></tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-header"><div class="step-num fault">3</div><div class="step-title">PAGE FAULT — ${faultType === 'INV' ? 'Página Inválida' : 'Página em Swap'}</div></div>
+      <div class="step-body">
+        <div class="result-banner fault-banner">
+          <div class="result-label">INTERRUPÇÃO GERADA PELA MMU</div>
+          <div class="result-addr">PAGE FAULT</div>
+          <div style="margin-top:8px;font-size:11px;font-family:var(--mono);color:var(--text-dim)">${faultMsg}</div>
+        </div>
+        <div style="margin-top:10px" class="info-box ${needsEviction?'warn':''}">${nextMsg}</div>
+      </div>
+    </div>
+  </div>`;
+}
+
+// ─── MODAL DE SELEÇÃO DE FRAME ────────────────────────────────────────────────
+
+function openFrameModal(pid, varIdx, faultType, needsEviction) {
+  pendingOp = { pid, varIdx, faultType };
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'modal-overlay';
+
+  const proc = PROCESSES[pid];
+  const variable = proc.vars[varIdx];
+
+  let title, subtitle, items, btnLabel;
+
+  if (!needsEviction) {
+    // Choose a free frame
+    title = 'ALOCAR PÁGINA';
+    subtitle = `<strong>PAGE FAULT</strong> ao acessar <strong>${variable.name}</strong> (${pid}, pág. ${variable.page})<br>
+      Tipo: <strong style="color:${faultType==='INV'?'var(--text-dim)':'var(--accent2)'}">${faultType}</strong><br>
+      Escolha um frame livre para alocar a página:`;
+    items = freeUserFrames().map(f => `
+      <button class="frame-choice-btn" onclick="allocatePage(${f})">
+        <span class="fc-num">${f}</span>
+        <div class="fc-info">
+          Frame ${f} — Livre
+          <div class="fc-addr">${hex(f*PAGE_SIZE)} – ${hex(f*PAGE_SIZE+PAGE_SIZE-1)}</div>
+        </div>
+        <span style="color:var(--accent3); font-size:10px">LIVRE ✓</span>
+      </button>`).join('');
+  } else {
+    // Choose victim frame
+    title = 'SUBSTITUIÇÃO DE PÁGINA';
+    subtitle = `<strong>PAGE FAULT + SEM FRAMES LIVRES</strong><br>
+      Acesso a <strong>${variable.name}</strong> (${pid}, pág. ${variable.page}) falhou.<br>
+      Você é o SO: escolha qual frame liberar (página vítima será movida ao swap):`;
+    items = occupiedUserFrames().map(f => {
+      const occ = userFrames[f];
+      const ownerProc = PROCESSES[occ.pid];
+      const clr = ownerProc.cssVar;
+      return `
+        <button class="frame-choice-btn" onclick="evictAndAllocate(${f})">
+          <span class="fc-num">${f}</span>
+          <div class="fc-info">
+            Frame ${f} — <span style="color:${clr}">${occ.pid}</span>, página ${occ.page}
+            <div class="fc-addr">${hex(f*PAGE_SIZE)} – ${hex(f*PAGE_SIZE+PAGE_SIZE-1)}</div>
+          </div>
+          <span class="fc-owner" style="background:${clr}22; color:${clr}; border:1px solid ${clr}">${occ.pid}[${occ.page}]</span>
+        </button>`;
+    }).join('');
+  }
+
+  overlay.innerHTML = `
+    <div class="modal-box">
+      <div class="modal-title">${title}</div>
+      <div class="modal-sub">${subtitle}</div>
+      <div class="frame-choice-list">${items}</div>
+      <button class="modal-cancel" onclick="closeModal()">✕ Cancelar</button>
+    </div>`;
+
+  document.body.appendChild(overlay);
+}
+
+function closeModal() {
+  const m = document.getElementById('modal-overlay');
+  if (m) m.remove();
+  pendingOp = null;
+}
+
+function allocatePage(frameNum) {
+  closeModal();
+  if (!pendingOp) return;
+  const { pid, varIdx, faultType } = pendingOp;
+  const proc = PROCESSES[pid];
+  const variable = proc.vars[varIdx];
+  const pageEntry = proc.pages[variable.page];
+
+  // If it was in swap, free swap block
+  if (faultType === 'SWAP' && pageEntry.location !== null) {
+    delete swapBlocks[pageEntry.location];
+  }
+
+  // Update page table
+  pageEntry.state = 'RAM';
+  pageEntry.location = frameNum;
+
+  // Mark frame
+  userFrames[frameNum] = { pid, page: variable.page };
+
+  // Calculate translation
+  const physAddr = frameNum * PAGE_SIZE + variable.offset;
+  const logicalAddr = variable.page * PAGE_SIZE + variable.offset;
+  const ptEntry = proc.ptbrOffset + variable.page * 4;
+
+  buildRAM();
+  refreshVarBtns(pid);
+  updateStats();
+
+  // Update MMU with complete flow
+  renderMMUAlloc(pid, proc, variable, faultType, frameNum, physAddr, logicalAddr, ptEntry, null, null);
+
+  flashFrame(0);
+  setTimeout(() => flashFrame(frameNum), 700);
+
+  showToast(`✓ Pág. ${variable.page} de ${pid} alocada no frame ${frameNum} → ${hex(physAddr)}`);
+}
+
+function evictAndAllocate(victimFrame) {
+  closeModal();
+  if (!pendingOp) return;
+  const { pid, varIdx, faultType } = pendingOp;
+  const proc = PROCESSES[pid];
+  const variable = proc.vars[varIdx];
+
+  const victim = userFrames[victimFrame];
+  const victimProc = PROCESSES[victim.pid];
+  const victimPage = victimProc.pages[victim.page];
+
+  // Find a free swap block
+  const freeSwap = freeSwapBlocks();
+  if (freeSwap.length === 0) {
+    showToast('⚠ Área de swap cheia! Operação impossível.', 'fault');
+    return;
+  }
+
+  const swapBlock = freeSwap[0];
+  swapCount++;
+
+  // Move victim to swap
+  swapBlocks[swapBlock] = { pid: victim.pid, page: victim.page };
+  victimPage.state = 'SWAP';
+  victimPage.location = swapBlock;
+
+  // If new page was in swap, free old swap
+  const pageEntry = proc.pages[variable.page];
+  if (faultType === 'SWAP' && pageEntry.location !== null) {
+    delete swapBlocks[pageEntry.location];
+  }
+
+  // Alloc new page
+  pageEntry.state = 'RAM';
+  pageEntry.location = victimFrame;
+  userFrames[victimFrame] = { pid, page: variable.page };
+
+  const physAddr = victimFrame * PAGE_SIZE + variable.offset;
+  const logicalAddr = variable.page * PAGE_SIZE + variable.offset;
+  const ptEntry = proc.ptbrOffset + variable.page * 4;
+
+  buildRAM();
+  refreshVarBtns(pid);
+  refreshVarBtns(victim.pid);
+  updateStats();
+
+  renderMMUAlloc(pid, proc, variable, faultType, victimFrame, physAddr, logicalAddr, ptEntry, victim, swapBlock);
+
+  flashFrame(victimFrame, 'fault');
+  setTimeout(() => flashFrame(victimFrame), 1000);
+  for (let b = 16; b <= 23; b++) flashFrame(b, 'fault');
+
+  showToast(`⇄ ${victim.pid}[${victim.page}] → Swap ${swapBlock} | ${pid}[${variable.page}] → Frame ${victimFrame}`, 'fault');
+}
+
+function renderMMUAlloc(pid, proc, variable, faultType, frameNum, physAddr, logicalAddr, ptEntry, victim, swapBlock) {
+  const mmu = document.getElementById('mmu-body');
+  const pageEntries = proc.pages;
+
+  let evictStep = '';
+  if (victim) {
+    evictStep = `
+      <div class="step">
+        <div class="step-header"><div class="step-num fault">E</div><div class="step-title">Substituição — Página Vítima Movida ao Swap</div></div>
+        <div class="step-body">
+          <div class="info-box warn">
+            Frame <strong>${frameNum}</strong> continha <strong style="color:${PROCESSES[victim.pid].cssVar}">${victim.pid}</strong>, página <strong>${victim.page}</strong><br>
+            → Movida para bloco de swap <strong style="color:var(--swap-color)">${swapBlock}</strong><br>
+            → Tabela de páginas de ${victim.pid} atualizada: pág. ${victim.page} = SWAP:${swapBlock}
+          </div>
+        </div>
+      </div>`;
+  }
+
+  let swapStep = '';
+  if (faultType === 'SWAP') {
+    swapStep = `
+      <div class="step">
+        <div class="step-header"><div class="step-num fault">S</div><div class="step-title">Swap-In — Página Trazida do Disco</div></div>
+        <div class="step-body">
+          <div class="info-box">Página ${variable.page} de ${pid} estava na área de swap. Conteúdo restaurado ao frame ${frameNum}.</div>
+        </div>
+      </div>`;
+  }
+
+  mmu.innerHTML = `<div class="steps">
+    <div class="step">
+      <div class="step-header"><div class="step-num">1</div><div class="step-title">Decomposição do Endereço Lógico</div></div>
+      <div class="step-body">
+        <div class="addr-decomp">
+          <div class="addr-box"><span class="label">ENDEREÇO LÓGICO</span><span class="val">${hex(logicalAddr)}</span></div>
+          <span class="eq">=</span>
+          <div class="addr-box page"><span class="label">PÁGINA</span><span class="val">${variable.page}</span></div>
+          <span class="eq">|</span>
+          <div class="addr-box offset"><span class="label">DESLOCAMENTO</span><span class="val">${hex(variable.offset)}</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-header"><div class="step-num fault">2</div><div class="step-title">PAGE FAULT — ${faultType === 'INV' ? 'Página Inválida' : 'Página em Swap'} (Resolvido)</div></div>
+      <div class="step-body">
+        <div class="info-box warn">Interrupção de page fault capturada pelo SO. Tipo: <strong>${faultType}</strong></div>
+      </div>
+    </div>
+    ${evictStep}
+    ${swapStep}
+    <div class="step">
+      <div class="step-header"><div class="step-num ok">A</div><div class="step-title">Alocação — Página ${variable.page} Carregada no Frame ${frameNum}</div></div>
+      <div class="step-body">
+        <table class="page-table">
+          <thead><tr><th>PÁG</th><th>ESTADO</th><th>LOCALIZAÇÃO</th><th>END. FÍSICO</th></tr></thead>
+          <tbody>
+            ${pageEntries.map((e,i) => {
+              let rowCls = i===variable.page ? 'highlight' : '';
+              let loc = e.state==='RAM'?`Frame ${e.location}`:e.state==='SWAP'?`Swap ${e.location}`:'—';
+              let physInfo = e.state==='RAM'?hex(e.location*PAGE_SIZE):'—';
+              return `<tr class="${rowCls}"><td>${i}</td><td style="color:${e.state==='RAM'?'var(--accent3)':e.state==='SWAP'?'var(--swap-color)':'var(--text-dim)'}">${e.state}</td><td>${loc}</td><td>${physInfo}</td></tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-header"><div class="step-num ok">T</div><div class="step-title">Tradução Concluída</div></div>
+      <div class="step-body">
+        <div class="formula-box">
+          <div class="formula-line">Endereço Físico = Frame × PAGE_SIZE + Deslocamento</div>
+          <div class="formula-line">Endereço Físico = ${frameNum} × 1024 + ${variable.offset}</div>
+          <div class="formula-result">Endereço Físico = ${hex(physAddr)}</div>
+        </div>
+        <div class="result-banner" style="margin-top:10px">
+          <div class="result-label">ENDEREÇO FÍSICO FINAL</div>
+          <div class="result-addr">${hex(physAddr)}</div>
+          <div style="margin-top:6px;font-size:11px;font-family:var(--mono);color:var(--text-dim)">${pid} · ${variable.name} | Pág ${variable.page} → Frame ${frameNum}</div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+// ─── INIT ────────────────────────────────────────────────────────────────────
+
+buildProcesses();
+buildRAM();
+updateStats();
+</script>
+</body>
+</html>

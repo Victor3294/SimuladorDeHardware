@@ -1,330 +1,343 @@
-# Documentação — Simulador de Hardware de Paginação (Parte 1)
+# Documentação — Simulador de Hardware de Paginação
 
 **Disciplina:** Sistemas Operacionais — Tecnologia em ADS  
 **Professor:** Eraldo Silveira e Silva — IFSC Campus São José  
-**Arquivo:** `simulador-paginacao.html`
+**Arquivos:** `simulador-paginacao.html` (Parte 1) · `simulador-paginacao-parte2.html` (Parte 2)
 
 ---
 
 ## 1. Visão Geral
 
-O simulador é uma **página Web autocontida** (HTML + CSS + JavaScript puro, sem dependências externas além de fontes Google) que representa visualmente o mecanismo de **tradução de endereços lógicos em físicos** por meio de uma Unidade de Gerenciamento de Memória (MMU) em um sistema com paginação.
+O projeto consiste em dois simuladores Web interativos, autocontidos (HTML + CSS + JavaScript puro, sem dependências externas além de fontes Google), que representam visualmente o mecanismo de **memória virtual com paginação** em sistemas operacionais modernos.
 
-A interface é dividida em três painéis:
+| Arquivo | Parte | Foco principal |
+|---|---|---|
+| `simulador-paginacao.html` | **Parte 1** | Tradução de endereços lógicos → físicos com tabela de páginas pré-alocada |
+| `simulador-paginacao-parte2.html` | **Parte 2** | Paginação sob demanda: page fault, substituição manual de páginas, área de swap |
 
-| Painel | Conteúdo |
-|--------|----------|
-| **Esquerdo** | Lista de processos, TCB e variáveis clicáveis |
-| **Central** | MMU — registradores e passos da tradução |
-| **Direito** | Mapa gráfico da RAM (16 quadros) com legenda |
+Ambos os simuladores compartilham a mesma identidade visual (tema dark/neon retro-futurista) e o mesmo layout de três painéis.
 
 ---
 
-## 2. Parâmetros do Sistema Implementados
+## 2. Parte 1 — Tradução de Endereços
 
-Estes valores seguem exatamente o enunciado do projeto:
+### 2.1 Parâmetros do Sistema
 
 | Parâmetro | Valor |
-|-----------|-------|
+|---|---|
 | Tamanho da página | 1 KiB = 1024 bytes |
 | Quadros físicos | 16 (numerados de 0 a 15) |
 | Memória física total | 16 KiB |
 | Endereçamento virtual por processo | 4 páginas (4 KiB) |
-| Quadro 0 | Reservado — contém as tabelas de páginas |
+| Quadro 0 | Reservado — contém as tabelas de páginas dos três processos |
 | Processos | P1, P2, P3 |
 | Variáveis por processo | 4 (uma em cada página virtual) |
 
-### Tabela de mapeamento página → quadro físico
+### 2.2 Mapeamento Página → Quadro Físico
 
 | Processo | PTBR | Pág 0 | Pág 1 | Pág 2 | Pág 3 |
-|----------|------|-------|-------|-------|-------|
+|---|---|---|---|---|---|
 | P1 | 0x0000 | 5 | 8 | 9 | 11 |
 | P2 | 0x0100 | 1 | 2 | 12 | 13 |
 | P3 | 0x0200 | 3 | 4 | 14 | 15 |
 
+Todas as páginas estão presentes na RAM desde o início — não há page fault na Parte 1.
+
+### 2.3 Fluxo de Tradução (5 Passos)
+
+Ao clicar em uma variável, o painel central exibe:
+
+| Passo | Descrição |
+|---|---|
+| **1** | Decomposição do endereço lógico em número de página e deslocamento |
+| **2** | Acesso ao frame 0 via PTBR — localiza a entrada na tabela de páginas |
+| **3** | Tabela de páginas completa do processo, com a linha da página acessada destacada |
+| **4** | Cálculo `Frame × 1024 + Offset` com todos os valores explicitados |
+| **5** | Banner com o endereço físico final em destaque |
+
 ---
 
-## 3. Estrutura do Código
+## 3. Parte 2 — Page Fault, Alocação Sob Demanda e Área de Swap
 
-### 3.1 HTML
+### 3.1 Parâmetros do Sistema
 
-A página define três `<div>` filhos dentro de `.layout` (CSS Grid 3 colunas):
+| Parâmetro | Valor |
+|---|---|
+| Tamanho da página | 1 KiB = 1024 bytes |
+| Frames kernel/SO | 0–3 (reservados, não acessíveis por processos) |
+| Frames de usuário | 4–11 (8 frames disponíveis) |
+| Frames reservados SO | 12–15 (indisponíveis para processos) |
+| Área de swap | 8 blocos, numerados 16–23 |
+| Processos | P1, P2, P3 — total de 12 páginas virtuais |
+| Estado inicial de cada página | **INV** (inválida) |
 
-- `.panel-left` → processos
-- `.panel-center` → MMU
-- `.panel-right` → RAM
+Como há 12 páginas virtuais e apenas 8 frames de usuário, a substituição de páginas é inevitável ao longo da simulação.
 
-Um `<div id="toast">` flutua na parte inferior para mensagens de feedback.
+### 3.2 Estados da Entrada de Tabela de Páginas
 
-### 3.2 CSS — Design e Tema
+Cada página de cada processo possui dois campos: **Estado** e **Localização**.
 
-O tema visual é **terminal retro-futurista** (dark/neon), escolhido por sua alusão ao hardware de baixo nível. Os principais recursos:
+| Estado | Significado | Localização |
+|---|---|---|
+| **INV** | Página nunca carregada; não existe em RAM nem em swap | `—` |
+| **RAM** | Página residente em um frame físico de usuário (4–11) | Número do frame |
+| **SWAP** | Página não está na RAM, mas tem cópia no disco simulado | Número do bloco (16–23) |
 
-- **Variáveis CSS** (`:root`) para toda a paleta, facilitando customização.
-- **Overlay de scanlines** (`body::before`) via `repeating-linear-gradient` para simular um monitor CRT.
-- **Animações CSS** puras:
-  - `chipPulse` — ícone MMU no cabeçalho pulsa em neon.
+### 3.3 Mapa de Endereçamento Físico (Parte 2)
+
+| Faixa de frames | Endereços | Área |
+|---|---|---|
+| 0–3 | 0x0000 – 0x0FFF | Kernel, tabelas de páginas, SO |
+| 4–11 | 0x1000 – 0x2FFF | RAM de usuário (disponível para processos) |
+| 12–15 | 0x3000 – 0x3FFF | Reservado ao SO (protegido) |
+| 16–23 | — | Área de swap (disco simulado) |
+
+### 3.4 Fluxo de Acesso a uma Variável
+
+Ao clicar em uma variável, a MMU consulta a tabela de páginas. Três situações são possíveis:
+
+#### Caso 1 — Página Residente na RAM (`RAM`)
+
+A tradução ocorre normalmente, sem interrupção. O simulador exibe os passos de decomposição do endereço lógico, consulta à tabela e cálculo do endereço físico.
+
+#### Caso 2 — Page Fault: Página Inválida (`INV`)
+
+1. A MMU gera uma interrupção de page fault.
+2. O simulador exibe o evento no painel central.
+3. **Se houver frame livre (4–11):** um modal é aberto listando os frames disponíveis. O aluno escolhe em qual frame alocar a página.
+4. **Se não houver frame livre:** o modal exibe os frames ocupados. O aluno escolhe uma página vítima. Ela é movida para a área de swap e o frame é liberado para a nova página.
+5. A tabela de páginas é atualizada: nova entrada passa a `RAM:frameEscolhido`.
+6. A tradução é concluída e o endereço físico é calculado.
+
+#### Caso 3 — Page Fault: Página em Swap (`SWAP`)
+
+1. A MMU gera uma interrupção de page fault (tipo swap-in).
+2. Se houver frame livre: o aluno escolhe o frame e a página é restaurada do swap (swap-in).
+3. Se não houver frame livre: o aluno escolhe uma página vítima, que é movida ao swap para liberar espaço; em seguida, a página solicitada é trazida do swap para o frame liberado.
+4. O bloco de swap anteriormente ocupado pela página é liberado.
+5. A tradução é concluída normalmente.
+
+### 3.5 Proteção de Memória
+
+Tentativas de alocar uma página em frames reservados ao SO (0–3 ou 12–15) não são exibidas como opções pelo simulador — esses frames nunca aparecem na lista de seleção do modal, o que implementa a proteção por omissão.
+
+---
+
+## 4. Estrutura do Código
+
+### 4.1 HTML
+
+Ambos os arquivos seguem a mesma estrutura de três `<div>` dentro de `.layout` (CSS Grid 3 colunas):
+
+- `.panel-left` → processos, TCB e variáveis
+- `.panel-center` → registradores da MMU e passos da tradução
+- `.panel-right` → mapa gráfico da RAM (e SWAP na Parte 2)
+
+### 4.2 CSS — Tema Visual
+
+O tema é **terminal retro-futurista** (dark/neon), escolhido por sua alusão ao hardware de baixo nível. Recursos visuais:
+
+- **Variáveis CSS** (`:root`) para toda a paleta, incluindo cores específicas por processo e cores de estado (swap em vermelho, RAM em verde, INV em cinza).
+- **Overlay de scanlines** (`body::before`) via `repeating-linear-gradient` para simular monitor CRT.
+- **Animações CSS puras:**
+  - `chipPulse` — ícone no cabeçalho pulsa em neon (vermelho na Parte 2, azul na Parte 1).
   - `stepIn` — cada passo da tradução aparece com `opacity` + `translateY` com `animation-delay` escalonado.
-  - `flashFrame` — o quadro RAM piscam ao ser acessado (`animation: flashFrame 0.6s ease-out 3`).
-  - `resultPulse` — o banner do resultado final acende como um glow de neon.
-- **Fontes:** `Share Tech Mono` (monoespaçada, para endereços/registradores) e `Rajdhani` (display, para títulos).
-- **Cores por processo:**
+  - `flashFrameAnim` — quadro RAM pisca em azul ao ser acessado normalmente.
+  - `flashFault` — quadro RAM pisca em vermelho durante page fault/evicção.
+  - `resultPulse` / `faultPulse` — banner do resultado final acende com glow.
+  - `fadeIn` — modal de substituição aparece com transição suave.
 
 | Processo | Cor primária | Cor escura (RAM) |
-|----------|-------------|-----------------|
+|---|---|---|
 | P1 | `#3b82f6` (azul) | `#1e3a5f` |
 | P2 | `#a855f7` (roxo) | `#3b1f5e` |
 | P3 | `#f59e0b` (âmbar) | `#5c3a00` |
+| Swap | `#ff4444` (vermelho) | `#3a0f0f` |
 
-### 3.3 JavaScript — Lógica Principal
+### 4.3 JavaScript — Lógica da Parte 2
 
-Todo o código JS está inline no final do arquivo, organizado em funções:
-
-#### Constante `PROCESSES`
-
-Objeto central que armazena, para cada processo:
+#### Estado Global
 
 ```js
-{
-  ptbr: '0x0000',       // valor do registrador PTBR (string para exibição)
-  ptbrOffset: 0x0000,   // valor numérico para cálculo
-  pages: [5, 8, 9, 11], // mapeamento página → frame físico
-  vars: [               // variáveis com nome, página e offset dentro da página
-    { name: 'alpha', page: 0, offset: 0x120 },
-    ...
-  ]
-}
+// Entrada de tabela de páginas
+function mkPage() { return { state: 'INV', location: null }; }
+
+// Cada processo tem 4 páginas no estado INV inicial
+const PROCESSES = {
+  P1: { pages: [mkPage(), mkPage(), mkPage(), mkPage()], ... },
+  ...
+};
+
+// frames[4..11]: null = livre, { pid, page } = ocupado
+const userFrames = new Array(12).fill(null);
+
+// swapBlocks[16..23]: undefined/null = livre, { pid, page } = ocupado
+const swapBlocks = {};
 ```
 
-#### Constante `FRAME_OWNER`
+#### Funções Principais
 
-Mapa `{ frameNum → 'p1'|'p2'|'p3'|'sys'|null }` usado para colorir a RAM no painel direito.
-
-#### `buildProcesses()`
-
-Gera dinamicamente os cards de processo no painel esquerdo com:
-- Cabeçalho clicável (chama `selectProcess`)
-- Bloco TCB com PTBR, quantidade de páginas e frames alocados
-- Botões de variável (chamam `translateAddress`)
-
-#### `selectProcess(pid)`
-
-- Marca o processo como ativo (`activeProcess = pid`)
-- Atualiza estilos de borda/glow nos cards
-- Preenche os registradores no topo do painel central (PTBR, processo ativo)
-- Exibe mensagem de prompt no painel MMU
-
-#### `translateAddress(pid, varIdx)`
-
-Função central da simulação. Executa:
-
-1. Se o processo clicado não for o ativo, chama `selectProcess` e reagenda via `setTimeout`.
-2. Calcula os valores da tradução:
-   - `logicalAddr = page × 1024 + offset`
-   - `physFrame = proc.pages[page]`
-   - `physAddr = physFrame × 1024 + offset`
-   - `ptEntryAddr = ptbrOffset + page × 4` (offset da entrada na tabela)
-3. Chama `renderMMU(...)` para exibir os 5 passos.
-4. Chama `flashFrame(0)` imediatamente (acesso ao frame 0 = tabela de páginas).
-5. Após 900 ms, chama `flashFrame(physFrame)` (acesso ao frame de dados).
-
-#### `renderMMU(...)` — Os 5 Passos da Tradução
-
-Injeta HTML com 5 blocos `.step`, cada um com `animation-delay` escalonado:
-
-| Passo | Conteúdo |
-|-------|----------|
-| **1** | Decomposição do endereço lógico em `página` e `deslocamento` |
-| **2** | Acesso ao frame 0 via PTBR — mostra o endereço da entrada na tabela |
-| **3** | Tabela de páginas completa do processo, com linha destacada |
-| **4** | Fórmula `Frame × 1024 + Offset` com todos os valores explícitos |
-| **5** | Banner com o endereço físico final em destaque neon |
-
-#### `buildRAM()`
-
-Gera os 16 `<div class="frame-row">` do painel direito, aplicando a classe de cor correta (`sys`, `p1-frame`, `p2-frame`, `p3-frame`, `free`) com base em `FRAME_OWNER`.
-
-#### `flashFrame(n)` e `showToast(msg)`
-
-- `flashFrame`: remove e reaplica a classe `flash-frame` no frame indicado (truque `void el.offsetWidth` para forçar reflow e reiniciar a animação CSS).
-- `showToast`: exibe a mensagem flutuante por 2,4 s.
+| Função | Responsabilidade |
+|---|---|
+| `buildProcesses()` | Gera dinamicamente os cards de processo com badges de estado (INV/RAM/SWAP) em cada variável |
+| `refreshVarBtns(pid)` | Atualiza os badges de estado após uma alocação ou evicção |
+| `selectProcess(pid)` | Ativa o processo e atualiza PTBR na MMU |
+| `accessVariable(pid, varIdx)` | Lógica central: detecta RAM (normal), INV ou SWAP (page fault) e toma a ação adequada |
+| `renderMMUNormal(...)` | Exibe os 4 passos de tradução normal |
+| `renderMMUFault(...)` | Exibe o diagnóstico de page fault com tipo e próxima ação |
+| `renderMMUAlloc(...)` | Exibe o fluxo completo: page fault → evicção (se houver) → swap-in (se houver) → alocação → tradução |
+| `openFrameModal(...)` | Abre o modal de seleção: frames livres (sem evicção) ou frames ocupados (com evicção) |
+| `allocatePage(frameNum)` | Executa a alocação direta em um frame livre |
+| `evictAndAllocate(victimFrame)` | Move a página vítima ao swap e aloca a nova página no frame liberado |
+| `buildRAM()` | Renderiza os 4 seções da RAM+SWAP no painel direito com cores por processo/estado |
+| `flashFrame(num, type)` | Pisca o frame com animação azul (normal) ou vermelha (fault) |
+| `updateStats()` | Atualiza a barra de estatísticas (frames livres, swap usado, page faults, trocas) |
 
 ---
 
-## 4. Fluxo de Uso
+## 5. Exemplos de Cenários de Simulação (Parte 2)
 
-```
-Usuário clica no processo (P1/P2/P3)
-    → selectProcess() atualiza PTBR na MMU e destaca o card
+### Cenário A — Primeira tradução (todas as páginas INV)
 
-Usuário clica em uma variável (ex: "alpha [P0+0x120]")
-    → translateAddress() calcula endereço lógico, frame e endereço físico
-    → renderMMU() exibe os 5 passos com animações escalonadas
-    → flashFrame(0)   → frame 0 (tabela) pisca na RAM
-    → flashFrame(5)   → frame de dados pisca na RAM (após 0,9 s)
-```
+1. Clicar em P1 → clicar em `alpha [P0+0x120]`
+2. Estado: pág. 0 de P1 = INV → **Page Fault tipo INV**
+3. Modal exibe frames 4–11 como livres. Escolher frame 4.
+4. Resultado: P1[0] = RAM:4 → endereço físico = `4 × 1024 + 0x120 = 0x1120`
 
----
+### Cenário B — Página que já foi alocada
 
-## 5. Exemplo de Tradução (P1 · variável `alpha`)
+1. Após o Cenário A, clicar em `alpha` novamente.
+2. Estado: pág. 0 de P1 = RAM:4 → **Tradução normal**.
+3. MMU calcula `0x1120` diretamente.
 
-| Campo | Valor |
-|-------|-------|
-| Variável | alpha |
-| Página virtual | 0 |
-| Offset | 0x120 (288) |
-| Endereço lógico | 0x0120 |
-| PTBR de P1 | 0x0000 |
-| Frame físico (tabela) | 5 |
-| **Endereço físico** | **5 × 1024 + 288 = 0x1520** |
+### Cenário C — Page fault com substituição (RAM cheia)
 
-Frames que piscam: **0** (tabela de páginas) → **5** (dado de P1).
+1. Alocar 8 páginas em frames 4–11 (um acesso a cada variável de P1, P2, P3 até preencher).
+2. Acessar uma 9ª página ainda em INV.
+3. Estado: **Page Fault + sem frames livres**.
+4. Modal exibe os 8 frames ocupados. Aluno escolhe um frame vítima.
+5. A página no frame escolhido é movida ao swap (bloco 16–23).
+6. A nova página é carregada no frame liberado.
+7. Os badges de ambos os processos (vítima e novo) são atualizados automaticamente.
+
+### Cenário D — Swap-in
+
+1. Após o Cenário C, acessar a variável cuja página foi enviada ao swap.
+2. Estado: pág. X = SWAP:Y → **Page Fault tipo SWAP**.
+3. Se houver frame livre: modal oferece frames livres para escolher.
+4. Se não: novo round de substituição, depois swap-in.
+5. O bloco de swap anterior é liberado.
 
 ---
 
 ## 6. Decisões de Implementação
 
 | Decisão | Justificativa |
-|---------|--------------|
+|---|---|
 | HTML/CSS/JS puro, sem frameworks | Portabilidade máxima; abre direto no navegador sem servidor |
-| CSS Variables para cores | Facilita customização e garante consistência visual |
-| Animações CSS (não JS) | Melhor desempenho; `animation-delay` cria o efeito de "passo a passo" |
-| `setTimeout` para flash sequencial | Simula o acesso temporal: tabela primeiro, dado depois |
-| Offsets de variáveis fixos | Valores escolhidos para ficarem dentro do range da página (0–1023) |
-| Tema dark/neon | Remete visualmente ao hardware de baixo nível; facilita distinguir componentes por cor |
+| CSS Variables para cores e estados | Facilita customização; estados INV/RAM/SWAP têm cores específicas |
+| Estado mutável em objetos JS simples | Reflete fielmente o modelo de tabela de páginas de um SO real |
+| Modal para seleção do frame | Coloca o aluno explicitamente no papel do SO, reforçando a aprendizagem |
+| Badges de estado nas variáveis | Feedback imediato e contínuo do estado de cada página |
+| `refreshVarBtns()` seletivo | Apenas o processo afetado tem seus botões reconstruídos, preservando performance |
+| Barra de estatísticas (frames livres, swap usado, faults, trocas) | Dá ao aluno visibilidade global do estado do sistema a qualquer momento |
+| Frames 0–3 e 12–15 nunca aparecem no modal | Implementa proteção de memória por omissão, sem necessidade de mensagem de erro |
+| `flashFrame(num, 'fault')` em vermelho vs azul normal | Distinção visual imediata entre acesso normal e page fault |
+| Dois arquivos separados (Parte 1 e Parte 2) | Progressão pedagógica: aluno domina tradução simples antes de enfrentar paginação sob demanda |
 
 ---
 
-## 7. Limitações da Parte 1
+## 7. Como Executar os Simuladores
 
-- Não há page fault (todas as páginas estão presentes na RAM desde o início).
-- A área de SWAP não existe nesta parte.
-- A substituição de páginas não é simulada.
-- Esses recursos são introduzidos na **Parte 2** do projeto.
+Ambos os arquivos são **autocontidos** — não requerem instalação, servidor web ou qualquer dependência local.
 
----
-
-## 8. Como Executar o Projeto
-
-O simulador é um arquivo HTML autocontido — não requer instalação de software, servidor web, Node.js ou qualquer outra dependência local.
-
-### 8.1 Pré-requisitos
+### 7.1 Pré-requisitos
 
 | Requisito | Detalhe |
-|-----------|---------|
+|---|---|
 | Navegador moderno | Google Chrome 90+, Firefox 88+, Microsoft Edge 90+ ou Safari 14+ |
-| Conexão à internet | Apenas para carregar as fontes do Google Fonts (`Share Tech Mono` e `Rajdhani`). Sem internet as fontes fallback do sistema são usadas e o simulador continua funcional. |
-| Servidor web | **Não necessário.** O arquivo pode ser aberto diretamente do sistema de arquivos. |
+| Conexão à internet | Apenas para carregar as fontes Google Fonts. Sem internet, fontes fallback do sistema são usadas e os simuladores continuam funcionais. |
+| Servidor web | **Não necessário.** Os arquivos podem ser abertos diretamente do sistema de arquivos. |
 
-### 8.2 Passo a passo para rodar
+### 7.2 Opções de Execução
 
-**Opção A — Abrir diretamente pelo sistema de arquivos (mais simples)**
+**Opção A — Duplo clique no arquivo (mais simples)**
 
-1. Baixe ou localize o arquivo `simulador-paginacao.html` no seu computador.
-2. Dê um duplo clique no arquivo. Ele abrirá automaticamente no navegador padrão do sistema.
-3. Se o navegador não abrir, clique com o botão direito → **Abrir com** → escolha Chrome, Firefox ou Edge.
+1. Localize `simulador-paginacao.html` ou `simulador-paginacao-parte2.html`.
+2. Dê um duplo clique. O arquivo abrirá no navegador padrão do sistema.
 
-**Opção B — Abrir pelo navegador manualmente**
+**Opção B — Abrir pelo navegador**
 
 1. Abra o navegador.
-2. Na barra de endereços, digite `Ctrl+O` (Windows/Linux) ou `Cmd+O` (macOS).
-3. Navegue até a pasta onde o arquivo está salvo e clique em **Abrir**.
+2. Pressione `Ctrl+O` (Windows/Linux) ou `Cmd+O` (macOS).
+3. Navegue até a pasta do arquivo e clique em Abrir.
 
-**Opção C — Via VS Code com Live Server (recomendado para desenvolvimento)**
+**Opção C — VS Code com Live Server (recomendado para desenvolvimento)**
 
 1. Instale a extensão **Live Server** no VS Code.
-2. Abra a pasta do projeto no VS Code.
-3. Clique com o botão direito em `simulador-paginacao.html` → **Open with Live Server**.
-4. O navegador abrirá em `http://127.0.0.1:5500/simulador-paginacao.html`.
+2. Abra a pasta do projeto.
+3. Clique com o botão direito no arquivo HTML → **Open with Live Server**.
 
-**Opção D — Via terminal com Python (alternativa rápida)**
+**Opção D — Terminal com Python**
 
 ```bash
-# Python 3
 cd pasta/do/projeto
 python3 -m http.server 8080
 ```
 
-Depois acesse `http://localhost:8080/simulador-paginacao.html` no navegador.
+Acesse `http://localhost:8080/simulador-paginacao-parte2.html`.
 
 ---
 
-## 9. Como Usar o Simulador
+## 8. Como Usar o Simulador da Parte 2
 
-Ao abrir o arquivo, a interface já está pronta — não há tela de carregamento nem configuração inicial. Veja abaixo o uso passo a passo.
+### 8.1 Interface
 
-### 9.1 Visão inicial
+| Componente | Descrição |
+|---|---|
+| **Barra de estatísticas** (topo central) | Exibe em tempo real: frames livres, swap usado, contador de page faults e de substituições |
+| **Painel esquerdo** | Cards de processo com TCB e variáveis; cada variável exibe o badge de estado atual (INV / RAM:X / SWP:X) |
+| **Painel central — registradores** | PTBR do processo ativo, tamanho de página, faixa de frames de usuário |
+| **Painel central — MMU** | Passos da tradução ou diagnóstico de page fault com toda a sequência de eventos |
+| **Painel direito** | Quatro seções: Kernel (0–3), RAM Usuário (4–11), Reservado SO (12–15) e Swap (16–23) |
 
-Ao carregar a página você verá:
+### 8.2 Fluxo de Uso Básico
 
-- **Painel esquerdo:** três cards (P1, P2, P3) com status `INATIVO`.
-- **Painel central:** mensagem solicitando que você selecione um processo.
-- **Painel direito:** os 16 frames da RAM já coloridos conforme o mapeamento inicial — frames coloridos pertencem a um processo, frames escuros estão livres.
+1. **Selecione um processo** clicando no cabeçalho do card (P1, P2 ou P3). O PTBR é carregado na MMU.
+2. **Clique em uma variável.** Observe o badge: `INV` significa que haverá page fault.
+3. **Se page fault com frames livres:** o modal lista os frames disponíveis (4–11). Escolha um.
+4. **Se page fault sem frames livres:** o modal lista os frames ocupados. Você é o SO — escolha a página vítima.
+5. Após a alocação, o painel central mostra toda a sequência: fault → evicção (se houve) → swap-in (se houve) → alocação → tradução → endereço físico.
+6. O badge da variável acessada muda para `RAM:X`. Se houve evicção, o badge da variável vítima muda para `SWP:Y`.
 
-### 9.2 Passo 1 — Selecionar um processo
-
-Clique no **cabeçalho de um card** de processo (na área com o nome P1, P2 ou P3).
-
-O que acontece:
-- O card selecionado ganha uma borda colorida e efeito de brilho (glow).
-- O status do processo muda para `ATIVO ●`.
-- No painel central, os **registradores da MMU** são atualizados:
-  - **PROCESSO ATIVO** exibe o PID selecionado.
-  - **PTBR** exibe o endereço base da tabela de páginas do processo.
-- Uma mensagem de confirmação aparece brevemente na parte inferior da tela.
-
-> **Dica:** Você pode trocar de processo a qualquer momento clicando em outro card. A MMU é atualizada imediatamente.
-
-### 9.3 Passo 2 — Acessar uma variável
-
-Com um processo ativo, clique em um dos **4 botões de variável** listados no card (ex: `alpha [P0+0x120]`).
-
-O rótulo de cada botão informa:
-- **Nome da variável** (ex: `alpha`)
-- **Página virtual** em que ela reside (ex: `P0` = página 0)
-- **Offset** dentro da página (ex: `0x120`)
-
-O que acontece ao clicar:
-
-1. O **painel central** é preenchido com os 5 passos da tradução, que aparecem com animação escalonada (um por vez).
-2. O **frame 0** da RAM pisca em azul neon — representa o acesso à tabela de páginas.
-3. Após ~0,9 segundos, o **frame de dados** do processo pisca — representa o acesso ao dado em si.
-
-### 9.4 Lendo os 5 passos da tradução (painel central)
-
-| Passo | O que ler |
-|-------|-----------|
-| **1 — Decomposição** | O endereço lógico é dividido em dois campos: o número da **página virtual** (bits superiores) e o **deslocamento/offset** (bits inferiores, 10 bits pois a página tem 1024 bytes). |
-| **2 — Acesso ao frame 0** | A MMU usa o PTBR do processo para calcular onde, dentro do frame 0, está a entrada da tabela correspondente à página solicitada. |
-| **3 — Tabela de páginas** | A tabela completa do processo é exibida. A linha da página acessada fica destacada em azul, mostrando para qual frame físico ela aponta. |
-| **4 — Cálculo do endereço físico** | A fórmula `Frame × 1024 + Offset` é resolvida com os valores reais, mostrando cada etapa da conta. |
-| **5 — Resultado final** | O endereço físico final aparece em destaque com glow neon. Este é o endereço que a CPU usaria para acessar o dado na RAM. |
-
-### 9.5 Lendo o painel direito (RAM)
+### 8.3 Lendo o Painel Direito
 
 | Cor do frame | Significado |
-|-------------|-------------|
-| Azul escuro | Frame pertence ao processo **P1** |
-| Roxo escuro | Frame pertence ao processo **P2** |
-| Âmbar escuro | Frame pertence ao processo **P3** |
-| Cinza escuro (com borda) | Frame do **sistema** (frame 0 = tabelas de páginas) |
-| Quase preto | Frame **livre** (não alocado a nenhum processo) |
+|---|---|
+| Azul escuro | Frame ocupado por P1 |
+| Roxo escuro | Frame ocupado por P2 |
+| Âmbar escuro | Frame ocupado por P3 |
+| Cinza escuro (sys) | Frames kernel (0–3, imutáveis) |
+| Cinza opaco (reservado) | Frames reservados SO (12–15, inacessíveis) |
+| Vermelho escuro (swap) | Bloco de swap com página armazenada |
+| Quase preto | Frame/bloco livre |
 
-Ao lado de cada frame você vê o **intervalo de endereços físicos** que ele ocupa (ex: `0x1400–0x17FF` para o frame 5).
+### 8.4 Dicas para Explorar Todos os Cenários
 
-Quando uma variável é acessada, os frames relevantes **piscam em azul** para indicar o acesso em progresso.
+1. Acesse variáveis de diferentes processos para preencher os 8 frames de usuário.
+2. Quando todos os frames estiverem ocupados, acesse uma variável ainda em INV para forçar a substituição.
+3. Depois de enviar uma página ao swap, acesse-a novamente para ver o swap-in.
+4. Observe os contadores de page faults e trocas crescerem na barra de estatísticas.
+5. Experimente diferentes estratégias de escolha da página vítima (FIFO manual, LRU manual, etc.) e compare os resultados.
 
-### 9.6 Experimentando diferentes cenários
+---
 
-Para explorar o simulador de forma completa, experimente:
+## 9. Limitações Conhecidas
 
-1. Clicar em **todas as variáveis de P1** e observar como os frames 5, 8, 9 e 11 piscam alternadamente na RAM.
-2. Trocar para **P2** e acessar variáveis — observe que os frames acessados mudam (1, 2, 12, 13) e a MMU exibe um PTBR diferente (`0x0100`).
-3. Comparar as tabelas de páginas de P1, P2 e P3 — note que cada processo tem seu próprio espaço de endereçamento virtual, mas compartilham a mesma RAM física.
-4. Observe que o **frame 0 sempre pisca primeiro** (leitura da tabela), independentemente do processo ou variável — isso ilustra o custo extra de acesso à memória que a TLB resolve (não implementado nesta parte).
-
-### 9.7 Dicas de navegação
-
-- Você pode clicar diretamente no botão de variável de um processo inativo — o simulador ativa o processo automaticamente e depois executa a tradução.
-- Não há botão de "reset" — o estado do simulador é reiniciado ao recarregar a página (`F5` ou `Ctrl+R`).
-- A página **não armazena nenhum dado** — tudo é calculado em tempo real a cada clique.
+| Limitação | Observação |
+|---|---|
+| Não há TLB | A TLB (Translation Lookaside Buffer) não é simulada; toda tradução passa pela tabela de páginas |
+| Política de substituição manual | O aluno escolhe a vítima; não há algoritmo automático (LRU, FIFO, Clock) implementado |
+| Swap sempre tem espaço suficiente | A simulação supõe que há sempre pelo menos um bloco livre no swap; esgotamento total do swap não é tratado com detalhes além de uma mensagem de aviso |
+| Sem persistência de estado | Ao recarregar a página (`F5`), todo o estado é reiniciado |
+| Sem segmentação | O modelo é de paginação pura; segmentação e paginação combinada não são abordadas |
